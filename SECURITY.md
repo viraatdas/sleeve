@@ -5,11 +5,13 @@ Sleeve handles identity, health, immigration, and insurance information. Treat e
 ## Guarantees in the application boundary
 
 - Authentication uses short-lived email codes. Codes are HMAC-hashed at rest, expire after ten minutes, are single-use, and have attempt and send-rate limits.
+- Production sign-up is restricted by `SLEEVE_ALLOWED_EMAILS`; managed family members are data workspaces, not independent account principals.
 - Remembered sessions use 256-bit random bearer tokens stored only in `HttpOnly`, `Secure`, `SameSite=Lax` cookies. Only a hash of each token is stored in DynamoDB.
 - Every person, record, file, reminder, and audit query is scoped to the authenticated owner. Public access exists only through a record-scoped share token.
 - Share tokens are random, stored as hashes, revocable, and expire after 15 minutes by default. File URLs issued from a valid share expire sooner than the share itself.
 - Sensitive record fields are encrypted with AES-256-GCM before DynamoDB storage. The table also uses AWS-managed encryption at rest.
 - Files live in a private S3 bucket with Block Public Access, versioning, TLS-only access, and SSE-KMS. Upload and download URLs are short-lived and bound to one object.
+- Completed uploads are size/type/signature checked and downloads are pinned to the accepted S3 version so a still-live upload URL cannot replace a confirmed document.
 - Document extraction runs in a separately authenticated Modal service. Its output is untrusted, schema-validated, and requires human confirmation.
 - Responses set a restrictive Content Security Policy, HSTS in production, `no-store` cache behavior for authenticated/private routes, and anti-framing/sniffing/referrer headers.
 - Logs and analytics must never contain document bytes, field values, raw email codes, session/share tokens, signed URLs, or full personal identifiers.
