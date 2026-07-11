@@ -1,0 +1,325 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Private, encrypted AWS storage for Sleeve. Deploy this stack in us-west-2.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedPattern: "^[a-z][a-z0-9-]{1,30}$"
+  ObjectPrefix:
+    Type: String
+    Default: private
+    AllowedPattern: "^[a-zA-Z0-9!_.*'()/-]+$"
+    Description: S3 key prefix that the Vercel role may access, without a trailing slash.
+  NoncurrentVersionRetentionDays:
+    Type: Number
+    Default: 90
+    MinValue: 30
+    MaxValue: 3650
+  AppOrigin:
+    Type: String
+    Default: https://sleeve.viraat.dev
+    AllowedPattern: "^https://[a-zA-Z0-9.-]+$"
+    Description: Browser origin allowed to use short-lived signed object URLs.
+  VercelOidcProviderArn:
+    Type: String
+    AllowedPattern: "^arn:aws:iam::[0-9]{12}:oidc-provider/oidc\\.vercel\\.com/viraatdas-projects$"
+    Description: ARN of the viraatdas-projects Vercel team OIDC provider.
+  VercelTeamSlug:
+    Type: String
+    Default: viraatdas-projects
+    AllowedValues:
+      - viraatdas-projects
+  VercelProjectName:
+    Type: String
+    Default: sleeve
+    AllowedPattern: "^[a-zA-Z0-9._-]+$"
+  VercelEnvironment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - preview
+      - development
+
+Rules:
+  RequireUsWest2:
+    Assertions:
+      - Assert: !Equals
+          - !Ref AWS::Region
+          - us-west-2
+        AssertDescription: Sleeve infrastructure must be deployed in us-west-2.
+
+Resources:
+  DataKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub Sleeve ${EnvironmentName} data encryption key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnableAccountIAMPolicies
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action: kms:*
+            Resource: "*"
+      PendingWindowInDays: 30
+      Tags:
+        - Key: Application
+          Value: sleeve
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  DataKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/sleeve-${EnvironmentName}
+      TargetKeyId: !Ref DataKey
+
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              KMSMasterKeyID: !GetAtt DataKey.Arn
+              SSEAlgorithm: aws:kms
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - content-type
+              - x-amz-server-side-encryption
+              - x-amz-server-side-encryption-aws-kms-key-id
+            AllowedMethods:
+              - GET
+              - HEAD
+              - PUT
+            AllowedOrigins:
+              - !Ref AppOrigin
+            ExposedHeaders:
+              - ETag
+            MaxAge: 300
+      LifecycleConfiguration:
+        Rules:
+          - Id: RetainThenRemoveNoncurrentVersions
+            NoncurrentVersionExpiration:
+              NoncurrentDays: !Ref NoncurrentVersionRetentionDays
+            Status: Enabled
+          - Id: AbortIncompleteMultipartUploads
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+            Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Application
+          Value: sleeve
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  DocumentsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DocumentsBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt DocumentsBucket.Arn
+              - !Sub ${DocumentsBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+          - Sid: DenyUploadsWithoutKms
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutObject
+            Resource: !Sub ${DocumentsBucket.Arn}/*
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+          - Sid: DenyUploadsWithWrongKmsKey
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutObject
+            Resource: !Sub ${DocumentsBucket.Arn}/*
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt DataKey.Arn
+
+  RecordsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+        - AttributeName: GSI2PK
+          AttributeType: S
+        - AttributeName: GSI2SK
+          AttributeType: S
+      DeletionProtectionEnabled: true
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: GSI2
+          KeySchema:
+            - AttributeName: GSI2PK
+              KeyType: HASH
+            - AttributeName: GSI2SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        KMSMasterKeyId: !GetAtt DataKey.Arn
+        SSEEnabled: true
+        SSEType: KMS
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Application
+          Value: sleeve
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  VercelAppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: !Sub Sleeve ${EnvironmentName} runtime role for Vercel
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: VercelProductionProjectOnly
+            Effect: Allow
+            Principal:
+              Federated: !Ref VercelOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "oidc.vercel.com/viraatdas-projects:aud": !Sub https://vercel.com/${VercelTeamSlug}
+                "oidc.vercel.com/viraatdas-projects:sub": !Sub "owner:${VercelTeamSlug}:project:${VercelProjectName}:environment:${VercelEnvironment}"
+      Policies:
+        - PolicyName: sleeve-runtime-data
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: BucketMetadata
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                Resource: !GetAtt DocumentsBucket.Arn
+              - Sid: ListPrivatePrefix
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt DocumentsBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix:
+                      - !Sub ${ObjectPrefix}/*
+              - Sid: ManagePrivateObjects
+                Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:ListMultipartUploadParts
+                  - s3:PutObject
+                Resource: !Sub ${DocumentsBucket.Arn}/${ObjectPrefix}/*
+              - Sid: UseApplicationKey
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:GenerateDataKey
+                Resource: !GetAtt DataKey.Arn
+                Condition:
+                  StringEquals:
+                    kms:ViaService:
+                      - !Sub s3.${AWS::Region}.${AWS::URLSuffix}
+                      - !Sub dynamodb.${AWS::Region}.${AWS::URLSuffix}
+              - Sid: ReadWriteSingleTable
+                Effect: Allow
+                Action:
+                  - dynamodb:BatchGetItem
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:ConditionCheckItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:DescribeTable
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt RecordsTable.Arn
+                  - !Sub ${RecordsTable.Arn}/index/*
+      Tags:
+        - Key: Application
+          Value: sleeve
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  AwsRegion:
+    Description: AWS_REGION
+    Value: !Ref AWS::Region
+  DocumentsBucketName:
+    Description: SLEEVE_BUCKET_NAME
+    Value: !Ref DocumentsBucket
+  DocumentsObjectPrefix:
+    Description: SLEEVE_DOCUMENTS_PREFIX
+    Value: !Ref ObjectPrefix
+  KmsKeyArn:
+    Description: SLEEVE_KMS_KEY_ARN
+    Value: !GetAtt DataKey.Arn
+  RecordsTableName:
+    Description: SLEEVE_TABLE_NAME
+    Value: !Ref RecordsTable
+  VercelRoleArn:
+    Description: AWS_ROLE_ARN
+    Value: !GetAtt VercelAppRole.Arn
