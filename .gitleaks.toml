@@ -1,0 +1,12 @@
+title = "Sleeve secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholder environment names and documentation"
+paths = [
+  '''\.env\.example$''',
+  '''README\.md$''',
+  '''SECURITY\.md$'''
+]

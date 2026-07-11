@@ -1,0 +1,68 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Local and deployment state
+.vercel/
+.netlify/
+.modal/
+.aws-sam/
+cdk.out/
+.sst/
+.serverless/
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials*
+secrets*
+!.gitleaks.toml
+
+# Personal documents and extraction artifacts
+uploads/
+documents/
+private/
+extracted/
+ocr-output/
+*.passport.*
+*.license.*
+*.insurance.*
+*.medical.*
+*.oci.*
+*.greencard.*
+
+# Logs, OS, and editors
+*.log
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test and tool caches
+.vitest/
+.playwright/
+playwright-report/
+test-results/
+.eslintcache
+.pnpm-store/
+
+# Python / Modal worker
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
