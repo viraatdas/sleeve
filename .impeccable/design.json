@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-12T01:35:00Z",
+  "title": "Design System: Sleeve",
+  "extensions": {
+    "colorMeta": {
+      "canvas": { "role": "neutral", "displayName": "Clear Canvas", "canonical": "oklch(1 0 0)", "tonalRamp": ["oklch(0.15 0 0)", "oklch(0.26 0 0)", "oklch(0.38 0 0)", "oklch(0.5 0 0)", "oklch(0.64 0 0)", "oklch(0.76 0 0)", "oklch(0.88 0 0)", "oklch(1 0 0)"] },
+      "ink": { "role": "neutral", "displayName": "Carbon Ink", "canonical": "oklch(0.16 0.014 150)", "tonalRamp": ["oklch(0.15 0.014 150)", "oklch(0.27 0.014 150)", "oklch(0.39 0.014 150)", "oklch(0.51 0.014 150)", "oklch(0.63 0.012 150)", "oklch(0.75 0.01 150)", "oklch(0.87 0.008 150)", "oklch(0.95 0.006 150)"] },
+      "moss": { "role": "primary", "displayName": "Cultivated Moss", "canonical": "oklch(0.40 0.106 150)", "tonalRamp": ["oklch(0.15 0.05 150)", "oklch(0.27 0.08 150)", "oklch(0.4 0.106 150)", "oklch(0.52 0.1 150)", "oklch(0.64 0.08 150)", "oklch(0.76 0.06 150)", "oklch(0.87 0.04 150)", "oklch(0.95 0.02 150)"] },
+      "persimmon": { "role": "secondary", "displayName": "Deadline Persimmon", "canonical": "oklch(0.67 0.16 42)", "tonalRamp": ["oklch(0.15 0.06 42)", "oklch(0.27 0.1 42)", "oklch(0.39 0.14 42)", "oklch(0.51 0.16 42)", "oklch(0.67 0.16 42)", "oklch(0.77 0.12 42)", "oklch(0.88 0.07 42)", "oklch(0.95 0.03 42)"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "System Display", "purpose": "Thin, quiet page headlines." },
+      "body": { "displayName": "System Body", "purpose": "Fast, familiar product interface text." },
+      "mono": { "displayName": "Document Mono", "purpose": "Masked identifiers and dates only." }
+    },
+    "shadows": [
+      { "name": "quiet-lift", "value": "0 8px 24px oklch(0.16 0.014 150 / 0.08)", "purpose": "Transient menus and mobile navigation." },
+      { "name": "lifted-sheet", "value": "0 18px 50px oklch(0.16 0.014 150 / 0.12)", "purpose": "An actively revealed record sleeve." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "180ms cubic-bezier(0.22, 1, 0.36, 1)", "purpose": "Record turns and direct state changes." }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "700px" },
+      { "name": "compact", "value": "1040px" }
+    ]
+  },
+  "components": [
+    { "name": "Primary Button", "kind": "button", "refersTo": "button-primary", "description": "Moss action used once per decision surface.", "html": "<button class=\"ds-btn-primary\">Save record</button>", "css": ".ds-btn-primary{min-height:44px;padding:0 16px;border:0;border-radius:12px;background:oklch(0.4 0.106 150);color:white;font:500 15px system-ui;transition:background 180ms,transform 180ms}.ds-btn-primary:hover{background:oklch(0.35 0.1 150)}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid oklch(0.4 0.106 150);outline-offset:3px}" },
+    { "name": "Secondary Button", "kind": "button", "refersTo": "button-secondary", "description": "Quiet bordered action.", "html": "<button class=\"ds-btn-secondary\">Cancel</button>", "css": ".ds-btn-secondary{min-height:44px;padding:0 16px;border:1px solid oklch(0.89 0.008 150);border-radius:12px;background:white;color:oklch(0.16 0.014 150);font:500 15px system-ui}.ds-btn-secondary:hover{background:oklch(0.97 0.006 150)}.ds-btn-secondary:focus-visible{outline:2px solid oklch(0.4 0.106 150);outline-offset:3px}" },
+    { "name": "Private Field", "kind": "input", "refersTo": "field", "description": "Accessible white input with protected focus.", "html": "<input class=\"ds-input\" placeholder=\"Document title\">", "css": ".ds-input{width:100%;min-height:48px;padding:0 14px;border:1px solid oklch(0.89 0.008 150);border-radius:12px;background:white;color:oklch(0.16 0.014 150);font:400 15px system-ui}.ds-input:focus{outline:2px solid oklch(0.4 0.106 150);outline-offset:2px}" },
+    { "name": "Status Chip", "kind": "chip", "refersTo": "status-protected", "description": "Compact protected-state vocabulary.", "html": "<span class=\"ds-chip\">Protected</span>", "css": ".ds-chip{display:inline-flex;align-items:center;min-height:28px;padding:0 9px;border:1px solid oklch(0.78 0.05 150);border-radius:8px;background:oklch(0.94 0.025 150);color:oklch(0.28 0.07 150);font:500 12px system-ui}" },
+    { "name": "Record Sleeve", "kind": "custom", "refersTo": "record-sleeve", "description": "Masked record summary that reveals a detailed reverse.", "html": "<article class=\"ds-sleeve\"><strong>Vision prescription</strong><span>•••• 4821</span></article>", "css": ".ds-sleeve{display:flex;justify-content:space-between;gap:16px;padding:22px;border:1px solid oklch(0.89 0.008 150);border-radius:20px;background:white;color:oklch(0.16 0.014 150);font:400 15px system-ui;transition:transform 180ms,box-shadow 180ms}.ds-sleeve:hover{transform:translateY(-1px);box-shadow:0 8px 24px oklch(0.16 0.014 150/.08)}.ds-sleeve:focus-within{outline:2px solid oklch(0.4 0.106 150);outline-offset:3px}" }
+  ],
+  "narrative": {
+    "northStar": "The Family Document Sleeve",
+    "overview": "A thin, precise interface that stays almost invisible until it protects or reveals something important. Warmth comes from plain language and cultivated moss, never from ornamental surfaces or security theater.",
+    "keyCharacteristics": ["Thin near-black type", "Pure white canvas", "Meaningful moss and persimmon", "Masked by default", "Fast state motion"],
+    "rules": [
+      { "name": "The Ten Percent Rule", "body": "Moss and persimmon together occupy no more than ten percent of a typical screen.", "section": "colors" },
+      { "name": "The Flat-at-Rest Rule", "body": "Surfaces do not float until interaction gives elevation a job.", "section": "elevation" }
+    ],
+    "dos": ["Conceal identifiers until explicitly revealed.", "Keep common controls at least 44px tall."],
+    "donts": ["Do not recreate hospital-portal density or cold insurance software.", "Do not use fake security theater, glassmorphism, gradient text, or repetitive icon-card dashboards."]
+  }
+}

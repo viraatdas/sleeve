@@ -1,8 +1,8 @@
+import { SleeveEntry } from "@/components/sleeve/sleeve-entry";
+
 export default function Home() {
-  return (
-    <main>
-      <h1>Sleeve</h1>
-      <p>A highly secure home for life&apos;s essential records.</p>
-    </main>
-  );
+  const allowDemo =
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_ENABLE_DEMO === "true";
+  return <SleeveEntry allowDemo={allowDemo} />;
 }
