@@ -34,6 +34,7 @@
 - DynamoDB transactions authorize their underlying `PutItem`/`UpdateItem`/`DeleteItem`/`ConditionCheckItem` actions; `dynamodb:TransactWriteItems` is not a valid IAM action and fails CloudFormation linting.
 - The production DynamoDB TTL attribute is `ttl`; the staged `expiresAt` disable and `ttl` enable migration completed successfully with status `ENABLED`.
 - `sleeve-glm-ocr-v2` passed live L4 inference against a fully synthetic passport image; keep production `MODAL_EXTRACT_URL` pinned to its `us-west` endpoint.
+- Vercel `MODAL_SHARED_SECRET` must equal `EXTRACTION_BEARER_TOKEN` in the Modal secret `sleeve-extraction-auth`; the v1→v2 migration left them out of sync (Modal returned 401, surfaced in the app as "extraction isn’t available right now"). Rotated both to a fresh token on 2026-07-11. Rotation order: update the Modal secret, redeploy the Modal app, update the Vercel production env, then redeploy Vercel.
 
 ## Execute: Dead-ends tried
 
