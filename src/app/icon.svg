@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .sleeve { stroke: #090f0a; }
+    @media (prefers-color-scheme: dark) {
+      .sleeve { stroke: #f2f6f3; }
+    }
+  </style>
+  <g transform="rotate(-4 16 16)">
+    <rect class="sleeve" x="9.4" y="6.2" width="17" height="22" rx="5.5" fill="none" stroke-width="1.5" opacity="0.42" />
+    <rect class="sleeve" x="6.6" y="3.4" width="17" height="22" rx="5.5" fill="none" stroke-width="2.4" />
+    <circle cx="19.2" cy="8" r="2.5" fill="#e46e3d" />
+  </g>
+</svg>

@@ -33,9 +33,11 @@ describe("workspace controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch person. Currently viewing You" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Add a person" }));
 
-    const relationship = screen.getByLabelText("Relationship");
-    expect(relationship).toHaveValue("Me");
+    const relationship = screen.getByRole("combobox", { name: "Relationship" });
+    expect(relationship).toHaveTextContent("Me");
+    fireEvent.click(relationship);
     expect(screen.getByRole("option", { name: "Me" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Family member" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Your name")).toBeVisible();
   });
 });

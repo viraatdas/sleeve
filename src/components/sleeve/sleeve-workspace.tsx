@@ -10,11 +10,14 @@ import {
   FileText,
   FolderOpen,
   Home,
+  Info,
   KeyRound,
   LockKeyhole,
   LogOut,
   Menu,
+  PenLine,
   Plus,
+  ScanLine,
   Search,
   ShieldCheck,
   Sparkles,
@@ -24,10 +27,11 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ChangeEventHandler, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { presentPerson, presentRecord, recordKinds, SleeveApiError, sleeveApi } from "./client-api";
 import { Modal } from "./modal";
 import { RecordSleeve } from "./record-sleeve";
+import { SelectField } from "./select-field";
 import type { ApiRecordKind, CreateRecordInput, Person, RecordCategory, SessionUser, SleeveRecord, WorkspaceData } from "./types";
 
 type ViewName = "overview" | "records" | "reminders" | "security";
@@ -48,6 +52,13 @@ const navItems: Array<{ id: ViewName; label: string; icon: typeof Home }> = [
 
 const categories: RecordCategory[] = ["Identity", "Health", "Vision", "Insurance", "Immigration"];
 
+interface CreateRecordOptions {
+  extract?: boolean;
+  onStage?: (stage: string) => void;
+}
+
+type ToastTone = "success" | "notice";
+
 export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspaceProps) {
   const [view, setView] = useState<ViewName>("overview");
   const [people, setPeople] = useState(data.people);
@@ -60,7 +71,8 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
   const [shareRecord, setShareRecord] = useState<SleeveRecord | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<RecordCategory | "All">("All");
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null);
+  const personMenuRef = useRef<HTMLDivElement>(null);
   const [records, setRecords] = useState(data.records);
   const [loadingPeople, setLoadingPeople] = useState(!isDemo);
   const [loadingRecords, setLoadingRecords] = useState(false);
@@ -122,9 +134,29 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
     });
   }, [category, query, records]);
 
-  function showToast(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 3200);
+  useEffect(() => {
+    if (!personMenu) return;
+    function dismiss(event: PointerEvent) {
+      const target = event.target instanceof Node ? event.target : null;
+      if (target && personMenuRef.current?.contains(target)) return;
+      setPersonMenu(false);
+    }
+    function onEscape(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setPersonMenu(false);
+      personMenuRef.current?.querySelector("button")?.focus();
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [personMenu]);
+
+  function showToast(message: string, tone: ToastTone = "success") {
+    setToast({ message, tone });
+    window.setTimeout(() => setToast(null), 4000);
   }
 
   function navigate(next: ViewName) {
@@ -153,7 +185,7 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
     showToast(`${name} has a private workspace.`);
   }
 
-  async function createRecord(input: CreateRecordInput, file?: File) {
+  async function createRecord(input: CreateRecordInput, file: File | undefined, options: CreateRecordOptions = {}) {
     if (!activePersonId) throw new SleeveApiError("Add a person before adding a record.", 400);
     if (isDemo) {
       const record = presentLocalRecord(input, Boolean(file));
@@ -163,15 +195,18 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
       return;
     }
 
+    options.onStage?.("Saving the record…");
     let apiRecord = await sleeveApi.createRecord(activePersonId, input);
     let hasSource = false;
     let warning = "";
     if (file) {
       try {
+        options.onStage?.("Uploading the source privately…");
         const uploaded = await sleeveApi.uploadFile(activePersonId, apiRecord.id, file);
         hasSource = true;
-        if (file.type !== "application/pdf" && input.kind !== "other") {
+        if (options.extract && file.type !== "application/pdf" && input.kind !== "other") {
           try {
+            options.onStage?.("Reading the document…");
             const extraction = await sleeveApi.extract(activePersonId, apiRecord.id, uploaded.id);
             apiRecord = { ...apiRecord, extraction };
           } catch {
@@ -185,7 +220,9 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
     const record = presentRecord(apiRecord, hasSource);
     setRecords((current) => [record, ...current]);
     setAddRecordOpen(false);
-    showToast(warning || `${record.title} was added.`);
+    if (warning) showToast(warning, "notice");
+    else if (apiRecord.extraction) showToast(`${record.title} was added — open it to review the extracted details.`);
+    else showToast(`${record.title} was added.`);
   }
 
   const reminders = useMemo(() => isDemo ? data.reminders : records
@@ -233,7 +270,7 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
       <div className="app-frame">
         <header className="topbar">
           <button className="icon-button mobile-menu" type="button" onClick={() => setMobileMenu(true)} aria-label="Open menu"><Menu size={21} /></button>
-          <div className="person-switcher">
+          <div className="person-switcher" ref={personMenuRef}>
             <button className="person-switcher__button" type="button" onClick={() => setPersonMenu((open) => !open)} aria-expanded={personMenu} aria-label={`Switch person. Currently viewing ${activePerson?.name ?? "no person"}`}>
               <span className="avatar">{activePerson?.initials ?? "—"}</span>
               <span><small>Viewing</small><strong>{activePerson?.name ?? "No person"}</strong></span>
@@ -302,7 +339,12 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
       <AddRecordModal open={addRecordOpen} onClose={() => setAddRecordOpen(false)} onCreate={createRecord} isDemo={isDemo} />
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} onViewSecurity={() => { setHelpOpen(false); navigate("security"); }} />
       <ShareModal record={shareRecord} personId={activePersonId} onClose={() => setShareRecord(null)} isDemo={isDemo} onCreated={() => showToast("A private share link is ready.")} />
-      {toast ? <div className="toast" role="status"><Check size={17} />{toast}</div> : null}
+      {toast ? (
+        <div className={`toast ${toast.tone === "notice" ? "toast--notice" : ""}`} role="status">
+          {toast.tone === "notice" ? <Info size={17} /> : <Check size={17} />}
+          {toast.message}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -406,7 +448,7 @@ function SecurityView({ user, onSignOut }: { user: SessionUser; onSignOut: () =>
 }
 
 function EmptyRecords({ onAdd }: { onAdd: () => void }) {
-  return <section className="empty-records"><span><FileText size={27} /></span><h2>Your first sleeve starts here.</h2><p>Add a record or source image. Sleeve can extract a draft for you to review before anything is saved.</p><button className="button button--primary" type="button" onClick={onAdd}><Plus size={18} />Add first record</button></section>;
+  return <section className="empty-records"><span><FileText size={27} /></span><h2>Your first sleeve starts here.</h2><p>Scan a document and Sleeve drafts the details for your review, or fill them out yourself.</p><button className="button button--primary" type="button" onClick={onAdd}><Plus size={18} />Add first record</button></section>;
 }
 
 function EmptyPeople({ onAdd }: { onAdd: () => void }) {
@@ -437,10 +479,25 @@ function AddPersonModal({ open, onClose, onCreate }: { open: boolean; onClose: (
       setBusy(false);
     }
   }
-  return <Modal open={open} onClose={onClose} title="Add a person" description="Each person gets a separate private workspace with its own records and access boundary."><form className="modal-form" onSubmit={submit}><label className="field-label" htmlFor="person-name">Name</label><input id="person-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={relationship === "Me" ? "Your name" : "Person’s name"} required /><label className="field-label" htmlFor="relationship">Relationship</label><SelectField id="relationship" value={relationship} onChange={(event) => setRelationship(event.target.value)} icon={UserRound}><option value="Me">Me</option><option value="Family member">Family member</option><option value="Partner">Partner</option><option value="Child">Child</option><option value="Parent">Parent</option><option value="Someone I help">Someone I help</option></SelectField><p className="field-hint">{relationship === "Me" ? "Your own private records and documents." : `A private workspace for ${relationship.toLowerCase()}.`}</p><div className="private-note"><LockKeyhole size={17} /><span>Only you can access this workspace unless you explicitly share a record.</span></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button button--primary" type="submit" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create workspace"}</button></div></form></Modal>;
+  return <Modal open={open} onClose={onClose} title="Add a person" description="Each person gets a separate private workspace with its own records and access boundary."><form className="modal-form" onSubmit={submit}><label className="field-label" htmlFor="person-name">Name</label><input id="person-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={relationship === "Me" ? "Your name" : "Person’s name"} required /><label className="field-label" htmlFor="relationship">Relationship</label><SelectField id="relationship" label="Relationship" value={relationship} onChange={setRelationship} icon={UserRound} options={relationshipOptions} /><p className="field-hint">{relationship === "Me" ? "Your own private records and documents." : `A private workspace for ${relationship.toLowerCase()}.`}</p><div className="private-note"><LockKeyhole size={17} /><span>Only you can access this workspace unless you explicitly share a record.</span></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button button--primary" type="submit" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create workspace"}</button></div></form></Modal>;
 }
 
-function AddRecordModal({ open, onClose, onCreate, isDemo }: { open: boolean; onClose: () => void; onCreate: (input: CreateRecordInput, file?: File) => Promise<void>; isDemo: boolean }) {
+const relationshipOptions = ["Me", "Family member", "Partner", "Child", "Parent", "Someone I help"].map((value) => ({ value, label: value }));
+
+type AddRecordMode = "scan" | "manual";
+
+const kindOptions = recordKinds.map(({ value, label }) => ({ value, label }));
+const scanKindOptions = kindOptions.filter((option) => option.value !== "other");
+const kindLabels = new Map(recordKinds.map(({ value, label }) => [value, label]));
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_FILE_BYTES = 15 * 1024 * 1024;
+
+function formatFileSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function AddRecordModal({ open, onClose, onCreate, isDemo }: { open: boolean; onClose: () => void; onCreate: (input: CreateRecordInput, file: File | undefined, options: CreateRecordOptions) => Promise<void>; isDemo: boolean }) {
+  const [mode, setMode] = useState<AddRecordMode>("scan");
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<ApiRecordKind>("passport");
   const [issuer, setIssuer] = useState("");
@@ -448,30 +505,235 @@ function AddRecordModal({ open, onClose, onCreate, isDemo }: { open: boolean; on
   const [issuedOn, setIssuedOn] = useState("");
   const [expiresOn, setExpiresOn] = useState("");
   const [file, setFile] = useState<File>();
+  const [preview, setPreview] = useState("");
+  const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState("");
   const [error, setError] = useState("");
+
+  const scanning = mode === "scan";
+  const kindLabel = kindLabels.get(kind) ?? "Record";
+  const previewRef = useRef("");
+
+  useEffect(() => () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+  }, []);
+
+  function updateFile(next: File | undefined) {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = next && next.type.startsWith("image/") ? URL.createObjectURL(next) : "";
+    setPreview(previewRef.current);
+    setFile(next);
+  }
+
+  function switchMode(next: AddRecordMode) {
+    if (busy || next === mode) return;
+    setMode(next);
+    setError("");
+    if (next === "scan") {
+      if (kind === "other") setKind("passport");
+      if (file && !IMAGE_TYPES.includes(file.type)) updateFile(undefined);
+    }
+  }
+
+  function acceptFile(next: File | undefined | null) {
+    setError("");
+    if (!next) return;
+    const allowed = scanning ? IMAGE_TYPES : [...IMAGE_TYPES, "application/pdf"];
+    if (!allowed.includes(next.type)) {
+      setError(scanning ? "Choose a JPEG, PNG, or WebP image so Sleeve can read it." : "Choose a JPEG, PNG, WebP, or PDF file.");
+      return;
+    }
+    if (next.size > MAX_FILE_BYTES) {
+      setError("Files can be up to 15 MB.");
+      return;
+    }
+    updateFile(next);
+  }
+
+  function onDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragging(false);
+    if (busy) return;
+    acceptFile(event.dataTransfer.files?.[0]);
+  }
+
+  function resetForm() {
+    setTitle(""); setIssuer(""); setIdentifier(""); setIssuedOn(""); setExpiresOn("");
+    updateFile(undefined); setError("");
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!title.trim()) return;
+    const effectiveTitle = scanning ? (title.trim() || kindLabel) : title.trim();
+    if (!effectiveTitle || (scanning && !file)) return;
     setBusy(true);
     setError("");
     try {
       await onCreate({
         kind,
-        title: title.trim(),
+        title: effectiveTitle,
         ...(issuer.trim() ? { issuer: issuer.trim() } : {}),
         ...(identifier.trim() ? { identifier: identifier.trim() } : {}),
         ...(issuedOn ? { issuedOn } : {}),
         ...(expiresOn ? { expiresOn } : {}),
-      }, file);
-      setTitle(""); setIssuer(""); setIdentifier(""); setIssuedOn(""); setExpiresOn(""); setFile(undefined);
+      }, file, { extract: scanning, onStage: setStage });
+      resetForm();
     } catch (caught) {
       setError(apiErrorMessage(caught, "We couldn’t add this record."));
     } finally {
       setBusy(false);
+      setStage("");
     }
   }
-  return <Modal open={open} onClose={onClose} title="Add a record" description="Start with the essentials or attach a source. Extracted details always wait for your review." wide><form className="modal-form" onSubmit={submit}><div className="form-split"><div><label className="field-label" htmlFor="record-title">Record name</label><input id="record-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Vision prescription" required /></div><div><label className="field-label" htmlFor="record-kind">Type</label><SelectField id="record-kind" value={kind} onChange={(event) => setKind(event.target.value as ApiRecordKind)} icon={FileKey}>{recordKinds.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</SelectField></div></div><div className="form-split"><div><label className="field-label" htmlFor="record-issuer">Issuer</label><input id="record-issuer" value={issuer} onChange={(event) => setIssuer(event.target.value)} placeholder="Optional" /></div><div><label className="field-label" htmlFor="record-identifier">Document or member number</label><input id="record-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="Concealed after saving" autoComplete="off" /></div></div><div className="form-split"><div><label className="field-label" htmlFor="record-issued">Issued on</label><input id="record-issued" type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} /></div><div><label className="field-label" htmlFor="record-expires">Expires on</label><input id="record-expires" type="date" value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} /></div></div><label className="upload-field" htmlFor="record-file"><UploadCloud size={25} /><strong>{file?.name || "Choose an image or PDF"}</strong><span>{file ? "Ready to upload privately" : "JPEG, PNG, WebP, or PDF · up to 15 MB"}</span><input id="record-file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => { setError(""); setFile(event.target.files?.[0]); }} /></label><div className="extraction-note"><Sparkles size={18} /><div><strong>{isDemo ? "Demo extraction" : "Private extraction"}</strong><span>{isDemo ? "No file leaves this browser in the demo." : "Your source is processed in a protected US region. Sleeve proposes fields for your review."}</span></div></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button button--primary" type="submit" disabled={busy || !title.trim()}>{busy ? "Saving securely…" : file ? "Upload & review" : "Add record"}</button></div></form></Modal>;
+
+  const canSubmit = scanning ? Boolean(file) : Boolean(title.trim());
+  const submitLabel = busy ? (stage || "Saving securely…") : scanning ? "Upload & extract" : file ? "Save & upload" : "Save record";
+
+  const dropzone = (
+    <label
+      className={`upload-field ${file ? "upload-field--filled" : ""} ${dragging ? "is-dragover" : ""}`}
+      htmlFor="record-file"
+      onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={onDrop}
+    >
+      {file ? (
+        <>
+          {preview ? (
+            // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
+            <img className="upload-field__thumb" src={preview} alt="" />
+          ) : (
+            <span className="upload-field__thumb upload-field__thumb--doc"><FileText size={20} strokeWidth={1.5} aria-hidden="true" /></span>
+          )}
+          <span className="upload-field__info">
+            <strong>{file.name}</strong>
+            <span>{formatFileSize(file.size)} · Stays private to this workspace</span>
+          </span>
+          <button
+            className="upload-field__remove"
+            type="button"
+            disabled={busy}
+            onClick={(event) => { event.preventDefault(); event.stopPropagation(); updateFile(undefined); }}
+          >
+            Remove
+          </button>
+        </>
+      ) : (
+        <>
+          <UploadCloud size={25} aria-hidden="true" />
+          <strong>{scanning ? "Drop an image here, or browse" : "Attach an image or PDF"}</strong>
+          <span>{scanning ? "JPEG, PNG, or WebP · up to 15 MB" : "Optional · JPEG, PNG, WebP, or PDF · up to 15 MB"}</span>
+        </>
+      )}
+      <input
+        key={file ? file.name : "empty"}
+        id="record-file"
+        type="file"
+        accept={scanning ? IMAGE_TYPES.join(",") : [...IMAGE_TYPES, "application/pdf"].join(",")}
+        disabled={busy}
+        onChange={(event) => acceptFile(event.target.files?.[0])}
+      />
+    </label>
+  );
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add a record" description="Scan a source document, or enter the details yourself. Nothing is shared until you choose to." wide>
+      <form className="modal-form" onSubmit={submit}>
+        <div className="mode-switch" role="radiogroup" aria-label="How would you like to add it?">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={scanning}
+            tabIndex={scanning ? 0 : -1}
+            onClick={() => switchMode("scan")}
+            onKeyDown={(event) => { if (event.key.startsWith("Arrow")) { event.preventDefault(); switchMode("manual"); } }}
+          >
+            <span className="mode-switch__icon"><ScanLine size={18} strokeWidth={1.8} aria-hidden="true" /></span>
+            <span><strong>Scan a document</strong><small>Upload a photo and Sleeve drafts the details.</small></span>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!scanning}
+            tabIndex={scanning ? -1 : 0}
+            onClick={() => switchMode("manual")}
+            onKeyDown={(event) => { if (event.key.startsWith("Arrow")) { event.preventDefault(); switchMode("scan"); } }}
+          >
+            <span className="mode-switch__icon"><PenLine size={18} strokeWidth={1.8} aria-hidden="true" /></span>
+            <span><strong>Fill it out</strong><small>Type the details. Attach a source anytime.</small></span>
+          </button>
+        </div>
+
+        {scanning ? (
+          <>
+            {dropzone}
+            <div className="form-split">
+              <div>
+                <label className="field-label" htmlFor="record-kind">Document type</label>
+                <SelectField id="record-kind" label="Document type" value={kind} onChange={(value) => setKind(value as ApiRecordKind)} icon={FileKey} options={scanKindOptions} disabled={busy} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="record-title">Record name <span className="field-optional">optional</span></label>
+                <input id="record-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={kindLabel} disabled={busy} />
+              </div>
+            </div>
+            <div className="extraction-note">
+              <Sparkles size={18} aria-hidden="true" />
+              <div>
+                <strong>{isDemo ? "Demo extraction" : "Private extraction"}</strong>
+                <span>{isDemo ? "No file leaves this browser in the demo." : "Your source is processed in a protected US region. Sleeve proposes fields, and nothing is saved without your review."}</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="form-split">
+              <div>
+                <label className="field-label" htmlFor="record-title">Record name</label>
+                <input id="record-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Vision prescription" required disabled={busy} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="record-kind">Type</label>
+                <SelectField id="record-kind" label="Type" value={kind} onChange={(value) => setKind(value as ApiRecordKind)} icon={FileKey} options={kindOptions} disabled={busy} />
+              </div>
+            </div>
+            <div className="form-split">
+              <div>
+                <label className="field-label" htmlFor="record-issuer">Issuer <span className="field-optional">optional</span></label>
+                <input id="record-issuer" value={issuer} onChange={(event) => setIssuer(event.target.value)} placeholder="e.g. U.S. Department of State" disabled={busy} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="record-identifier">Document or member number <span className="field-optional">optional</span></label>
+                <input id="record-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="Concealed after saving" autoComplete="off" disabled={busy} />
+              </div>
+            </div>
+            <div className="form-split">
+              <div>
+                <label className="field-label" htmlFor="record-issued">Issued on</label>
+                <input id="record-issued" type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} disabled={busy} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="record-expires">Expires on</label>
+                <input id="record-expires" type="date" value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} disabled={busy} />
+              </div>
+            </div>
+            {dropzone}
+            <div className="private-note">
+              <LockKeyhole size={17} aria-hidden="true" />
+              <span>Sensitive values are encrypted and concealed until you reveal them.</span>
+            </div>
+          </>
+        )}
+
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        <div className="modal-actions">
+          <button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="button button--primary" type="submit" disabled={busy || !canSubmit} aria-live="polite">{submitLabel}</button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
 
 function ShareModal({ record, personId, onClose, isDemo, onCreated }: { record: SleeveRecord | null; personId: string; onClose: () => void; isDemo: boolean; onCreated: () => void }) {
@@ -509,12 +771,15 @@ function ShareModal({ record, personId, onClose, isDemo, onCreated }: { record: 
     }
   }
   const durationLabel = duration === 15 ? "15 minutes" : duration === 60 ? "1 hour" : duration === 1440 ? "24 hours" : "7 days";
-  return <Modal open={Boolean(record)} onClose={close} title={createdUrl ? "Private link ready" : `Share ${record?.title ?? "record"}`} description={createdUrl ? "Only the selected record is included. You can revoke access at any time." : "Create limited access to this record without opening the rest of the workspace."}>{createdUrl ? <div className="share-created"><div className="share-created__link"><LockKeyhole size={18} /><span>{isDemo ? "Demo link—not connected" : "Private link created"}</span></div><p><Clock3 size={16} />Expires in {durationLabel}</p>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--secondary" type="button" onClick={close}>Done</button><button className="button button--primary" type="button" disabled={isDemo} onClick={copyLink}>Copy private link</button></div></div> : <div className="share-form"><div className="share-scope"><FileText size={20} /><div><strong>{record?.title}</strong><span>Details {includeSource ? "and private source" : "only"}</span></div><span className="status-chip"><Check size={14} />One record</span></div><label className="field-label" htmlFor="share-duration">Link expires after</label><SelectField id="share-duration" value={duration} onChange={(event) => setDuration(Number(event.target.value))} icon={Clock3}><option value={15}>15 minutes</option><option value={60}>1 hour</option><option value={1440}>24 hours</option><option value={10080}>7 days</option></SelectField><label className="check-row"><input type="checkbox" checked={includeSource} onChange={(event) => setIncludeSource(event.target.checked)} disabled={!record?.hasSource} /><span><strong>Include source image</strong><small>{record?.hasSource ? "Leave off unless the recipient truly needs it." : "This record does not have a source image."}</small></span></label><div className="private-note"><ShieldCheck size={17} /><span>The link is token-scoped, revocable, and expires automatically. It never reveals other records.</span></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={close} disabled={busy}>Cancel</button><button className="button button--primary" type="button" onClick={create} disabled={busy}>{busy ? "Creating…" : "Create private link"}</button></div></div>}</Modal>;
+  return <Modal open={Boolean(record)} onClose={close} title={createdUrl ? "Private link ready" : `Share ${record?.title ?? "record"}`} description={createdUrl ? "Only the selected record is included. You can revoke access at any time." : "Create limited access to this record without opening the rest of the workspace."}>{createdUrl ? <div className="share-created"><div className="share-created__link"><LockKeyhole size={18} /><span>{isDemo ? "Demo link—not connected" : "Private link created"}</span></div><p><Clock3 size={16} />Expires in {durationLabel}</p>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--secondary" type="button" onClick={close}>Done</button><button className="button button--primary" type="button" disabled={isDemo} onClick={copyLink}>Copy private link</button></div></div> : <div className="share-form"><div className="share-scope"><FileText size={20} /><div><strong>{record?.title}</strong><span>Details {includeSource ? "and private source" : "only"}</span></div><span className="status-chip"><Check size={14} />One record</span></div><label className="field-label" htmlFor="share-duration">Link expires after</label><SelectField id="share-duration" label="Link expires after" value={String(duration)} onChange={(value) => setDuration(Number(value))} icon={Clock3} options={durationOptions} /><label className="check-row"><input type="checkbox" checked={includeSource} onChange={(event) => setIncludeSource(event.target.checked)} disabled={!record?.hasSource} /><span><strong>Include source image</strong><small>{record?.hasSource ? "Leave off unless the recipient truly needs it." : "This record does not have a source image."}</small></span></label><div className="private-note"><ShieldCheck size={17} /><span>The link is token-scoped, revocable, and expires automatically. It never reveals other records.</span></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={close} disabled={busy}>Cancel</button><button className="button button--primary" type="button" onClick={create} disabled={busy}>{busy ? "Creating…" : "Create private link"}</button></div></div>}</Modal>;
 }
 
-function SelectField({ id, value, onChange, icon: Icon, children }: { id: string; value: string | number; onChange: ChangeEventHandler<HTMLSelectElement>; icon: typeof FileKey; children: ReactNode }) {
-  return <span className="select-field"><Icon className="select-field__context" size={17} strokeWidth={1.7} aria-hidden="true" /><select id={id} value={value} onChange={onChange}>{children}</select><ChevronDown className="select-field__chevron" size={17} strokeWidth={1.7} aria-hidden="true" /></span>;
-}
+const durationOptions = [
+  { value: "15", label: "15 minutes", hint: "Recommended" },
+  { value: "60", label: "1 hour" },
+  { value: "1440", label: "24 hours" },
+  { value: "10080", label: "7 days" },
+];
 
 function HelpModal({ open, onClose, onViewSecurity }: { open: boolean; onClose: () => void; onViewSecurity: () => void }) {
   return <Modal open={open} onClose={onClose} title="How Sleeve works" description="A quick guide to keeping important information organized and private."><div className="help-content"><div className="help-list"><div className="help-item"><span><UserRound size={18} /></span><div><strong>Start with a person</strong><p>Choose “Me” for your own records, or add someone whose information you manage.</p></div></div><div className="help-item"><span><FileKey size={18} /></span><div><strong>Add the essentials</strong><p>Save key details and attach a private source image or PDF when you have one.</p></div></div><div className="help-item"><span><ShieldCheck size={18} /></span><div><strong>Share only what’s needed</strong><p>Private links include one record, expire after 15 minutes by default, and can be revoked.</p></div></div></div><div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose}>Close</button><button className="button button--secondary" type="button" onClick={onViewSecurity}><ShieldCheck size={17} />View security</button></div></div></Modal>;
