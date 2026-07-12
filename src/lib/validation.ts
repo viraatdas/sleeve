@@ -29,7 +29,20 @@ export const recordCreateSchema = z.object({
   reminderDaysBefore: z.number().int().min(0).max(730).optional(),
   reminderEmails: z.array(email).max(10).optional(),
 });
-export const recordUpdateSchema = recordCreateSchema.partial().refine((value) => Object.keys(value).length > 0);
+const storedExtractionSchema = z.object({
+  status: z.literal("review_required").default("review_required"),
+  fields: z.array(z.object({
+    label: z.string().trim().min(1).max(100),
+    value: z.string().trim().max(2000),
+    confidence: z.number().min(0).max(1).optional(),
+  })).max(100),
+  documentType: z.string().trim().max(100).optional(),
+});
+
+export const recordUpdateSchema = recordCreateSchema
+  .extend({ extraction: storedExtractionSchema })
+  .partial()
+  .refine((value) => Object.keys(value).length > 0);
 
 export const uploadSchema = z.object({
   fileName: z.string().trim().min(1).max(180).refine((value) => !/[\\/\0]/.test(value)),

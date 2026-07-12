@@ -85,6 +85,13 @@ export interface CreateRecordInput {
   reminderEmails?: string[];
 }
 
+export interface UpdateRecordInput extends Partial<CreateRecordInput> {
+  extraction?: {
+    fields: Array<{ label: string; value: string; confidence?: number }>;
+    documentType?: string;
+  };
+}
+
 export interface Person {
   id: string;
   name: string;

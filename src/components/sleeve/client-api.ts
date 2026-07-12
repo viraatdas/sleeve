@@ -5,6 +5,7 @@ import type {
   ApiRecordKind,
   ApiStoredFile,
   CreateRecordInput,
+  UpdateRecordInput,
   Person,
   RecordCategory,
   SessionResponse,
@@ -171,6 +172,16 @@ export const sleeveApi = {
     dataRequest<ApiRecord>(apiPath(personId, "/records"), {
       method: "POST",
       body: JSON.stringify(input),
+    }),
+  updateRecord: (personId: string, recordId: string, input: UpdateRecordInput) =>
+    dataRequest<ApiRecord>(apiPath(personId, `/records/${encodeURIComponent(recordId)}`), {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  deleteRecord: (personId: string, recordId: string) =>
+    dataRequest<{ deleted: boolean }>(apiPath(personId, `/records/${encodeURIComponent(recordId)}`), {
+      method: "DELETE",
+      body: "{}",
     }),
   async uploadFile(personId: string, recordId: string, file: File) {
     const basePath = apiPath(personId, `/records/${encodeURIComponent(recordId)}`);

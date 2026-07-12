@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { handleApi, HttpError, json, readJson } from "@/lib/http";
-import { deleteRecord, getRecord, listFiles, putAudit, putRecord } from "@/lib/repository";
+import { deleteFile, deleteRecord, getRecord, listFiles, putAudit, putRecord } from "@/lib/repository";
+import { removeObject } from "@/lib/storage";
 import { recordUpdateSchema, safeJson } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -35,6 +36,10 @@ export async function DELETE(request: Request, { params }: Context) {
     const { ownerId } = await requireSession();
     const { personId, recordId } = await params;
     if (!await getRecord(ownerId, personId, recordId)) throw new HttpError(404, "Not found");
+    for (const file of await listFiles(ownerId, personId, recordId)) {
+      await removeObject(file);
+      await deleteFile(ownerId, personId, recordId, file.id);
+    }
     await deleteRecord(ownerId, personId, recordId);
     await putAudit(ownerId, "record.deleted", { personId, recordId });
     return json({ data: { deleted: true } });

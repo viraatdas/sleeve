@@ -1,7 +1,7 @@
 import { requireSession } from "@/lib/auth";
 import { extractDocument } from "@/lib/extraction";
 import { handleApi, HttpError, json, readJson } from "@/lib/http";
-import { getFile, getRecord, putAudit, putRecord } from "@/lib/repository";
+import { getFile, getRecord, putAudit } from "@/lib/repository";
 import { presignDownload } from "@/lib/storage";
 import { safeJson } from "@/lib/validation";
 import { z } from "zod";
@@ -23,9 +23,9 @@ export async function POST(request: Request, { params }: Context) {
     if (file.status !== "uploaded") throw new HttpError(409, "Upload is not complete");
     const documentType = record.kind === "drivers_license" ? "driver_license" : record.kind;
     if (documentType === "other" || file.contentType === "application/pdf") throw new HttpError(422, "Extraction supports known document types and images only");
+    // The draft is returned for the owner's review; nothing is stored until they
+    // confirm it through a record update.
     const result = await extractDocument(await presignDownload(file, 90), file.contentType, documentType);
-    const updated = { ...record, extraction: result, updatedAt: new Date().toISOString() };
-    await putRecord(ownerId, updated);
     await putAudit(ownerId, "record.extraction_ready", { personId, recordId, fileId });
     return json({ data: result });
   }, { sameOrigin: true });

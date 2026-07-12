@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Bell,
   ChevronRight,
   Eye,
   EyeOff,
@@ -9,6 +8,7 @@ import {
   Image as ImageIcon,
   RotateCcw,
   Share2,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import type { SleeveRecord } from "./types";
@@ -16,11 +16,23 @@ import type { SleeveRecord } from "./types";
 interface RecordSleeveProps {
   record: SleeveRecord;
   onShare: (record: SleeveRecord) => void;
+  onDelete: (record: SleeveRecord) => Promise<void>;
 }
 
-export function RecordSleeve({ record, onShare }: RecordSleeveProps) {
+export function RecordSleeve({ record, onShare, onDelete }: RecordSleeveProps) {
   const [open, setOpen] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirmDelete() {
+    setDeleting(true);
+    try {
+      await onDelete(record);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <article className={`record-sleeve ${open ? "record-sleeve--open" : ""}`}>
@@ -64,7 +76,7 @@ export function RecordSleeve({ record, onShare }: RecordSleeveProps) {
             <button
               className="icon-button icon-button--inverse"
               type="button"
-              onClick={() => { setOpen(false); setRevealed(false); }}
+              onClick={() => { setOpen(false); setRevealed(false); setConfirmingDelete(false); }}
               tabIndex={open ? 0 : -1}
               aria-label={`Close ${record.title}`}
             >
@@ -90,21 +102,32 @@ export function RecordSleeve({ record, onShare }: RecordSleeveProps) {
             </dl>
           </div>
 
-          <div className="record-back__actions">
-            <button className="back-action" type="button" onClick={() => setRevealed((value) => !value)} tabIndex={open ? 0 : -1}>
-              {revealed ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
-              {revealed ? "Hide details" : "Reveal details"}
-            </button>
-            <button className="back-action" type="button" tabIndex={open ? 0 : -1}>
-              <Bell size={17} aria-hidden="true" /> Reminder
-            </button>
-            <button className="back-action back-action--primary" type="button" onClick={() => onShare(record)} tabIndex={open ? 0 : -1}>
-              <Share2 size={17} aria-hidden="true" /> Share
-            </button>
-          </div>
+          {confirmingDelete ? (
+            <div className="record-back__actions record-back__actions--confirm" role="alertdialog" aria-label={`Delete ${record.title}?`}>
+              <span>Delete this record and its source for good?</span>
+              <button className="back-action" type="button" onClick={() => setConfirmingDelete(false)} disabled={deleting} tabIndex={open ? 0 : -1}>
+                Keep it
+              </button>
+              <button className="back-action back-action--danger" type="button" onClick={confirmDelete} disabled={deleting} tabIndex={open ? 0 : -1}>
+                <Trash2 size={15} aria-hidden="true" /> {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          ) : (
+            <div className="record-back__actions">
+              <button className="back-action" type="button" onClick={() => setRevealed((value) => !value)} tabIndex={open ? 0 : -1}>
+                {revealed ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+                {revealed ? "Hide details" : "Reveal details"}
+              </button>
+              <button className="back-action" type="button" onClick={() => setConfirmingDelete(true)} tabIndex={open ? 0 : -1}>
+                <Trash2 size={16} aria-hidden="true" /> Delete
+              </button>
+              <button className="back-action back-action--primary" type="button" onClick={() => onShare(record)} tabIndex={open ? 0 : -1}>
+                <Share2 size={17} aria-hidden="true" /> Share
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </article>
   );
 }
-

@@ -1,4 +1,32 @@
-import type { WorkspaceData } from "./types";
+import type { ApiRecordKind, WorkspaceData } from "./types";
+
+/** Fictional extraction drafts so the demo can exercise the review step. */
+export function demoExtractionFields(kind: ApiRecordKind): Array<{ label: string; value: string; confidence?: number }> {
+  if (kind === "insurance") {
+    return [
+      { label: "Member ID", value: "DEMO-4821-XX", confidence: 0.94 },
+      { label: "Group number", value: "GRP-00000", confidence: 0.9 },
+      { label: "Plan", value: "Example Care Plus", confidence: 0.97 },
+      { label: "Effective date", value: "2026-01-01", confidence: 0.71 },
+      { label: "Customer service", value: "1-800-000-0000", confidence: 0.52 },
+    ];
+  }
+  if (kind === "medical" || kind === "vision") {
+    return [
+      { label: "Patient", value: "Demo person", confidence: 0.95 },
+      { label: "Provider", value: "Example practice", confidence: 0.9 },
+      { label: "Date", value: "2026-05-01", confidence: 0.83 },
+      { label: "Notes", value: "Demo value", confidence: 0.58 },
+    ];
+  }
+  return [
+    { label: "Document number", value: "DEMO000000", confidence: 0.96 },
+    { label: "Full name", value: "Demo person", confidence: 0.92 },
+    { label: "Issued on", value: "2020-06-15", confidence: 0.88 },
+    { label: "Expires on", value: "2030-06-14", confidence: 0.86 },
+    { label: "Place of issue", value: "Example city", confidence: 0.57 },
+  ];
+}
 
 /**
  * Local development metadata only. These are intentionally fictional and are
