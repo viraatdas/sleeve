@@ -20,7 +20,7 @@
 - Vercel project `viraatdas-projects/sleeve` — remove with `vercel project rm sleeve` if abandoned — created 2026-07-11 by deployment setup.
 - AWS IAM OIDC provider `arn:aws:iam::597088032164:oidc-provider/oidc.vercel.com/viraatdas-projects` — remove only after all team Vercel roles are gone — created 2026-07-11 for Sleeve.
 - AWS CloudFormation stack `sleeve-production` in `us-west-2` — disable DynamoDB deletion protection and empty retained storage before teardown — created 2026-07-11.
-- Modal app `sleeve-glm-ocr` and secret `sleeve-extraction-auth` — stop/delete the app, volume, and secret from the Modal `viraat` workspace if abandoned — created 2026-07-11.
+- Modal app `sleeve-glm-ocr-v2`, volume `sleeve-glm-ocr-models`, and secret `sleeve-extraction-auth` — stop/delete the app, volume, and secret from the Modal `viraat` workspace if abandoned — created 2026-07-11. The superseded `sleeve-glm-ocr` app was stopped after v2 passed live inference.
 - Resend sending-only API key `66c52cf0-2aae-4bcc-899d-c9cf5b377ad3` — delete from Resend and remove `RESEND_API_KEY` from Vercel if abandoned — created 2026-07-11.
 
 ## Execute: Discoveries
@@ -32,9 +32,13 @@
 - The connected Resend account is limited to one verified domain (`mg.exla.ai`), so production currently sends as `Sleeve <sleeve@mg.exla.ai>`; adding `sleeve.viraat.dev` requires a Resend plan/domain-slot change and must not delete the existing Exla domain.
 - Browser S3 uploads must consume the API-provided signed KMS headers; do not sign `Content-Length`, because browsers set it themselves and forbid JavaScript from assigning it.
 - DynamoDB transactions authorize their underlying `PutItem`/`UpdateItem`/`DeleteItem`/`ConditionCheckItem` actions; `dynamodb:TransactWriteItems` is not a valid IAM action and fails CloudFormation linting.
+- The production DynamoDB TTL attribute is `ttl`; the staged `expiresAt` disable and `ttl` enable migration completed successfully with status `ENABLED`.
+- `sleeve-glm-ocr-v2` passed live L4 inference against a fully synthetic passport image; keep production `MODAL_EXTRACT_URL` pinned to its `us-west` endpoint.
 
 ## Execute: Dead-ends tried
 
 - `uvx modal deploy` from `modal/` lacks local FastAPI imports; use `uv run modal deploy -m sleeve_extractor.service` inside the locked project environment.
 - Modal image build with `transformers==5.13.0` and `safetensors==0.7.0` is unsatisfiable; Transformers 5.13 requires `safetensors>=0.8.0`.
+- GLM-OCR's Transformers processor imports image/video utilities from Torchvision; pair `torch==2.9.1` with `torchvision==0.24.1`.
+- Treat the cached Modal model as usable only when `/models/glm-ocr/.ready` exists; a processor config can survive an interrupted first download without any model weights.
 - DynamoDB rejects a one-step TTL attribute rename (`expiresAt` → `ttl`); disable TTL on the old attribute, wait for `DISABLED`, then deploy the template with the new enabled attribute.

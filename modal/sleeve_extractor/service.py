@@ -6,6 +6,7 @@ import hmac
 import io
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from .schemas import EXTRACTION_MODELS, ExtractionRequest, ExtractionResponse
 
 MODEL_ID = "zai-org/GLM-OCR"
 MODEL_DIR = "/models/glm-ocr"
+MODEL_READY_MARKER = "/models/glm-ocr/.ready"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 25_000_000
 MAX_NEW_TOKENS = 1_500
@@ -30,6 +32,7 @@ runtime_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install(
     "pydantic==2.12.5",
     "safetensors==0.8.0",
     "torch==2.9.1",
+    "torchvision==0.24.1",
     "transformers==5.13.0",
 )
 api_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install(
@@ -37,7 +40,7 @@ api_image = modal.Image.debian_slim(python_version="3.12").uv_pip_install(
     "pydantic==2.12.5",
 )
 
-app = modal.App("sleeve-glm-ocr", image=runtime_image)
+app = modal.App("sleeve-glm-ocr-v2", image=runtime_image)
 
 
 def _decode_image(request: ExtractionRequest):
@@ -70,13 +73,13 @@ def _decode_image(request: ExtractionRequest):
 
 
 def _prompt_for(request: ExtractionRequest) -> str:
-    schema = EXTRACTION_MODELS[request.document_type].model_json_schema()
+    template = EXTRACTION_MODELS[request.document_type]().model_dump(mode="json")
     return (
         "Extract only values visibly present in this document. "
         "Do not infer or complete missing values. Use null for missing scalar values "
         "and [] for missing lists. Dates must be YYYY-MM-DD when unambiguous. "
-        "Return only one JSON object that exactly matches this JSON Schema, with no "
-        "Markdown or commentary:\n" + json.dumps(schema, separators=(",", ":"))
+        "Return only one JSON object that exactly matches this JSON template, with no "
+        "Markdown or commentary:\n" + json.dumps(template, separators=(",", ":"))
     )
 
 
@@ -100,16 +103,17 @@ class GlmOcrService:
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
         model_path = Path(MODEL_DIR)
-        source = str(model_path) if (model_path / "config.json").exists() else MODEL_ID
+        source = str(model_path) if Path(MODEL_READY_MARKER).exists() else MODEL_ID
         self.processor = AutoProcessor.from_pretrained(source)
         self.model = AutoModelForImageTextToText.from_pretrained(
             source,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             device_map="cuda",
         ).eval()
         if source == MODEL_ID:
             self.processor.save_pretrained(MODEL_DIR)
             self.model.save_pretrained(MODEL_DIR)
+            Path(MODEL_READY_MARKER).write_text("ready\n", encoding="utf-8")
             model_volume.commit()
 
     @modal.method()
@@ -118,12 +122,10 @@ class GlmOcrService:
         try:
             image = _decode_image(request)
         except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="The document image could not be processed",
-            ) from None
+            raise ValueError("The document image could not be processed") from None
 
         temporary_path: str | None = None
+        stage = "prepare"
         try:
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temporary:
                 temporary_path = temporary.name
@@ -137,6 +139,7 @@ class GlmOcrService:
                     ],
                 }
             ]
+            stage = "template"
             inputs = self.processor.apply_chat_template(
                 messages,
                 tokenize=True,
@@ -145,6 +148,7 @@ class GlmOcrService:
                 return_tensors="pt",
             ).to(self.model.device)
             inputs.pop("token_type_ids", None)
+            stage = "generate"
             generated = self.model.generate(
                 **inputs,
                 max_new_tokens=MAX_NEW_TOKENS,
@@ -154,16 +158,19 @@ class GlmOcrService:
                 generated[0][inputs["input_ids"].shape[1] :],
                 skip_special_tokens=True,
             )
+            stage = "validate"
             fields = validate_extraction(request.document_type, output)
             return ExtractionResponse(
                 document_type=request.document_type,
                 fields=fields.model_dump(mode="json"),
             ).model_dump(mode="json")
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Document extraction failed",
-            ) from None
+        except Exception as exc:
+            detail = f" reason={exc}" if stage == "validate" and isinstance(exc, ValueError) else ""
+            print(
+                f"extraction_failure stage={stage} type={type(exc).__name__}{detail}",
+                file=sys.stderr,
+            )
+            raise RuntimeError("Document extraction failed") from None
         finally:
             image.close()
             if temporary_path:

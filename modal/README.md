@@ -1,6 +1,6 @@
 # Sleeve GLM-OCR worker
 
-This Modal service runs `zai-org/GLM-OCR` on an L4 GPU in `us-west`, with
+This Modal service deploys as `sleeve-glm-ocr-v2` and runs `zai-org/GLM-OCR` on an L4 GPU in `us-west`, with
 request routing anchored in `us-west`. It accepts one JPEG, PNG, or WebP image,
 extracts the selected document schema, validates that untrusted model output,
 and marks every result as requiring human confirmation.

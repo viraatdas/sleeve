@@ -59,7 +59,7 @@ def normalize_values(value: Any, key: str | None = None) -> Any:
 
 
 def extract_json_object(output: str) -> dict[str, Any]:
-    """Decode exactly one JSON object, tolerating only a Markdown code fence."""
+    """Decode one bounded JSON object, tolerating model wrapper tokens or a code fence."""
     if len(output) > 65_536:
         raise ValueError("model output exceeds the response limit")
 
@@ -68,10 +68,24 @@ def extract_json_object(output: str) -> dict[str, Any]:
         candidate = re.sub(r"^```(?:json)?\s*", "", candidate, count=1, flags=re.IGNORECASE)
         candidate = re.sub(r"\s*```$", "", candidate, count=1)
 
-    decoded = json.loads(candidate)
-    if not isinstance(decoded, dict):
-        raise ValueError("model output must be a JSON object")
-    return decoded
+    try:
+        decoded = json.loads(candidate)
+        if isinstance(decoded, dict):
+            return decoded
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(candidate):
+        if character != "{":
+            continue
+        try:
+            decoded, _ = decoder.raw_decode(candidate[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, dict):
+            return decoded
+    raise ValueError("model output must contain a JSON object")
 
 
 def validate_extraction(document_type: DocumentType, output: str) -> Extraction:
@@ -80,4 +94,5 @@ def validate_extraction(document_type: DocumentType, output: str) -> Extraction:
     try:
         return model.model_validate(payload, strict=True)
     except ValidationError as exc:
-        raise ValueError("model output did not match the extraction schema") from exc
+        error_types = ",".join(sorted({error["type"] for error in exc.errors(include_input=False)}))
+        raise ValueError(f"model output did not match the extraction schema ({error_types})") from exc

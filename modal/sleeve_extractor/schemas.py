@@ -26,113 +26,113 @@ class DocumentType(StrEnum):
 
 
 class Address(StrictModel):
-    street: NullableText
-    city: NullableText
-    state_or_region: NullableText
-    postal_code: NullableIdentifier
-    country: NullableText
+    street: NullableText = None
+    city: NullableText = None
+    state_or_region: NullableText = None
+    postal_code: NullableIdentifier = None
+    country: NullableText = None
 
 
 class PassportExtraction(StrictModel):
-    full_name: NullableText
-    surname: NullableText
-    given_names: NullableText
-    passport_number: NullableIdentifier
-    nationality: NullableText
-    date_of_birth: NullableDate
-    sex: NullableText
-    place_of_birth: NullableText
-    date_of_issue: NullableDate
-    date_of_expiry: NullableDate
-    issuing_authority: NullableText
+    full_name: NullableText = None
+    surname: NullableText = None
+    given_names: NullableText = None
+    passport_number: NullableIdentifier = None
+    nationality: NullableText = None
+    date_of_birth: NullableDate = None
+    sex: NullableText = None
+    place_of_birth: NullableText = None
+    date_of_issue: NullableDate = None
+    date_of_expiry: NullableDate = None
+    issuing_authority: NullableText = None
 
 
 class DriverLicenseExtraction(StrictModel):
-    full_name: NullableText
-    license_number: NullableIdentifier
-    address: Address
-    date_of_birth: NullableDate
-    sex: NullableText
-    issue_date: NullableDate
-    expiration_date: NullableDate
-    issuing_jurisdiction: NullableText
-    license_class: NullableIdentifier
-    restrictions: NullableText
+    full_name: NullableText = None
+    license_number: NullableIdentifier = None
+    address: Address | None = None
+    date_of_birth: NullableDate = None
+    sex: NullableText = None
+    issue_date: NullableDate = None
+    expiration_date: NullableDate = None
+    issuing_jurisdiction: NullableText = None
+    license_class: NullableIdentifier = None
+    restrictions: NullableText = None
 
 
 class GreenCardExtraction(StrictModel):
-    full_name: NullableText
-    surname: NullableText
-    given_name: NullableText
-    uscis_number: NullableIdentifier
-    category: NullableIdentifier
-    country_of_birth: NullableText
-    date_of_birth: NullableDate
-    sex: NullableText
-    card_expires: NullableDate
-    resident_since: NullableDate
+    full_name: NullableText = None
+    surname: NullableText = None
+    given_name: NullableText = None
+    uscis_number: NullableIdentifier = None
+    category: NullableIdentifier = None
+    country_of_birth: NullableText = None
+    date_of_birth: NullableDate = None
+    sex: NullableText = None
+    card_expires: NullableDate = None
+    resident_since: NullableDate = None
 
 
 class OciExtraction(StrictModel):
-    full_name: NullableText
-    oci_number: NullableIdentifier
-    passport_number: NullableIdentifier
-    nationality: NullableText
-    date_of_birth: NullableDate
-    place_of_birth: NullableText
-    date_of_issue: NullableDate
-    place_of_issue: NullableText
-    visa_type: NullableIdentifier
+    full_name: NullableText = None
+    oci_number: NullableIdentifier = None
+    passport_number: NullableIdentifier = None
+    nationality: NullableText = None
+    date_of_birth: NullableDate = None
+    place_of_birth: NullableText = None
+    date_of_issue: NullableDate = None
+    place_of_issue: NullableText = None
+    visa_type: NullableIdentifier = None
 
 
 class InsuranceExtraction(StrictModel):
-    plan_name: NullableText
-    insurer_name: NullableText
-    member_name: NullableText
-    member_id: NullableIdentifier
-    group_number: NullableIdentifier
-    plan_type: NullableText
-    effective_date: NullableDate
-    expiration_date: NullableDate
-    rx_bin: NullableIdentifier
-    rx_pcn: NullableIdentifier
-    rx_group: NullableIdentifier
-    payer_phone: NullableIdentifier
+    plan_name: NullableText = None
+    insurer_name: NullableText = None
+    member_name: NullableText = None
+    member_id: NullableIdentifier = None
+    group_number: NullableIdentifier = None
+    plan_type: NullableText = None
+    effective_date: NullableDate = None
+    expiration_date: NullableDate = None
+    rx_bin: NullableIdentifier = None
+    rx_pcn: NullableIdentifier = None
+    rx_group: NullableIdentifier = None
+    payer_phone: NullableIdentifier = None
 
 
 class EyePrescription(StrictModel):
-    sphere: NullableIdentifier
-    cylinder: NullableIdentifier
-    axis: NullableIdentifier
-    add: NullableIdentifier
-    prism: NullableIdentifier
+    sphere: NullableIdentifier = None
+    cylinder: NullableIdentifier = None
+    axis: NullableIdentifier = None
+    add: NullableIdentifier = None
+    prism: NullableIdentifier = None
 
 
 class VisionExtraction(StrictModel):
-    patient_name: NullableText
-    provider_name: NullableText
-    prescription_date: NullableDate
-    expiration_date: NullableDate
-    right_eye: EyePrescription
-    left_eye: EyePrescription
-    pupillary_distance: NullableIdentifier
+    patient_name: NullableText = None
+    provider_name: NullableText = None
+    prescription_date: NullableDate = None
+    expiration_date: NullableDate = None
+    right_eye: EyePrescription | None = None
+    left_eye: EyePrescription | None = None
+    pupillary_distance: NullableIdentifier = None
 
 
 class Medication(StrictModel):
-    name: NullableText
-    strength: NullableIdentifier
-    directions: NullableText
+    name: NullableText = None
+    strength: NullableIdentifier = None
+    directions: NullableText = None
 
 
 class MedicalExtraction(StrictModel):
-    patient_name: NullableText
-    record_type: NullableText
-    provider_name: NullableText
-    facility_name: NullableText
-    date_of_service: NullableDate
-    diagnoses: Annotated[list[str], Field(max_length=30)]
-    medications: Annotated[list[Medication], Field(max_length=30)]
-    allergies: Annotated[list[str], Field(max_length=30)]
+    patient_name: NullableText = None
+    record_type: NullableText = None
+    provider_name: NullableText = None
+    facility_name: NullableText = None
+    date_of_service: NullableDate = None
+    diagnoses: Annotated[list[str], Field(max_length=30)] = Field(default_factory=list)
+    medications: Annotated[list[Medication], Field(max_length=30)] = Field(default_factory=list)
+    allergies: Annotated[list[str], Field(max_length=30)] = Field(default_factory=list)
 
 
 Extraction = (

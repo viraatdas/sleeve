@@ -24,10 +24,20 @@ def test_normalizes_whitespace_empty_values_and_date() -> None:
     }
 
 
-def test_extract_json_object_accepts_json_fence_only() -> None:
+def test_extract_json_object_accepts_bounded_model_wrappers() -> None:
     assert extract_json_object('```json\n{"member_id":"123"}\n```') == {"member_id": "123"}
-    with pytest.raises(json.JSONDecodeError):
-        extract_json_object('result: {"member_id":"123"}')
+    assert extract_json_object('result: {"member_id":"123"}') == {"member_id": "123"}
+
+
+def test_sparse_passport_output_defaults_missing_fields_to_none() -> None:
+    extraction = validate_extraction(
+        DocumentType.PASSPORT,
+        '{"full_name":"Ada Lovelace","passport_number":"REDACTED"}',
+    )
+
+    assert extraction.full_name == "Ada Lovelace"
+    assert extraction.passport_number == "REDACTED"
+    assert extraction.date_of_expiry is None
 
 
 def test_passport_schema_rejects_unknown_fields() -> None:
