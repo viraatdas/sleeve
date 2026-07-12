@@ -88,6 +88,18 @@ input, select, textarea { width: 100%; min-height: 50px; border: 1px solid var(-
 input::placeholder, textarea::placeholder { color: oklch(.46 .018 150); opacity: 1; }
 input:hover, select:hover, textarea:hover { border-color: oklch(.67 .018 150); }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--moss); outline-offset: 2px; border-color: transparent; }
+.select-field { position: relative; display: block; color: var(--muted); }
+.select-field select { appearance: none; padding: 0 44px 0 42px; cursor: pointer; color: var(--ink); background: var(--surface); font-weight: 530; transition: border-color 150ms var(--ease-out), background-color 150ms var(--ease-out), box-shadow 150ms var(--ease-out); }
+.select-field select:hover { border-color: oklch(.65 .025 150); background: white; box-shadow: 0 3px 12px oklch(.16 .014 150 / .05); }
+.select-field select:focus { background: white; box-shadow: 0 5px 18px oklch(.16 .014 150 / .07); }
+.select-field select:disabled { cursor: not-allowed; opacity: .58; box-shadow: none; }
+.select-field option { color: var(--ink); background: white; font-weight: 450; }
+.select-field__context, .select-field__chevron { position: absolute; z-index: 1; top: 50%; transform: translateY(-50%); pointer-events: none; transition: color 150ms var(--ease-out), transform 150ms var(--ease-out); }
+.select-field__context { left: 14px; }
+.select-field__chevron { right: 14px; }
+.select-field:hover, .select-field:focus-within { color: var(--moss-dark); }
+.select-field:focus-within .select-field__chevron { transform: translateY(calc(-50% + 1px)); }
+.field-hint { margin: 7px 2px 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .field-help { margin: 7px 0 0; color: var(--muted); font-size: 12px; }
 .form-error { margin: 14px 0 -5px; padding: 10px 12px; border-radius: 10px; color: var(--danger); background: oklch(.96 .025 27); font-size: 13px; }
 .code-input { height: 60px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 25px; letter-spacing: .42em; text-align: center; padding-left: calc(14px + .42em); }
@@ -335,6 +347,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--moss); outl
 .share-created__link { min-height: 52px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; display: flex; align-items: center; gap: 9px; background: var(--surface); }
 .share-created__link svg { color: var(--moss); }
 .share-created p { margin: 12px 0 0; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+.help-content { padding: 8px 24px 24px; }
+.help-list { display: flex; flex-direction: column; }
+.help-item { padding: 16px 0; border-bottom: 1px solid var(--line); display: flex; align-items: flex-start; gap: 12px; }
+.help-item:last-child { border-bottom: 0; }
+.help-item > span { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 10px; display: grid; place-items: center; color: var(--moss-dark); background: var(--moss-pale); }
+.help-item strong { font-size: 13px; font-weight: 570; }
+.help-item p { max-width: 42ch; margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .toast { position: fixed; z-index: var(--z-toast); right: 24px; bottom: 24px; min-height: 48px; max-width: calc(100vw - 48px); padding: 10px 15px; border-radius: 13px; display: flex; align-items: center; gap: 9px; color: white; background: var(--ink); box-shadow: 0 12px 34px oklch(.16 .014 150 / .24); font-size: 12px; animation: toast-in 200ms var(--ease-out); }
 .toast svg { color: oklch(.73 .13 150); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } }
@@ -378,7 +397,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--moss); outl
   .person-switcher__button > span:nth-child(2) { min-width: 0; }
   .person-switcher__button small { display: none; }
   .person-switcher__button .avatar { display: none; }
-  .topbar__right > .icon-button, .demo-pill { display: none; }
+  .demo-pill { display: none; }
   .topbar__add { width: 44px; padding: 0; font-size: 0; }
   .person-menu { position: fixed; left: 12px; right: 12px; top: 72px; width: auto; }
   .view { padding: 34px 18px 42px; }
@@ -442,6 +461,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--moss); outl
   .modal { width: calc(100vw - 16px); max-height: calc(100svh - 16px); border-radius: 20px; }
   .modal__topline { padding: 20px 18px 17px; }
   .modal-form, .share-form, .share-created { padding: 18px; }
+  .help-content { padding: 6px 18px 18px; }
   .modal-actions { display: grid; grid-template-columns: 1fr 1fr; }
 }
 

@@ -20,10 +20,11 @@ import {
   Sparkles,
   UploadCloud,
   UserPlus,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEventHandler, type FormEvent, type ReactNode } from "react";
 import { presentPerson, presentRecord, recordKinds, SleeveApiError, sleeveApi } from "./client-api";
 import { Modal } from "./modal";
 import { RecordSleeve } from "./record-sleeve";
@@ -55,6 +56,7 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
   const [mobileMenu, setMobileMenu] = useState(false);
   const [addPersonOpen, setAddPersonOpen] = useState(false);
   const [addRecordOpen, setAddRecordOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [shareRecord, setShareRecord] = useState<SleeveRecord | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<RecordCategory | "All">("All");
@@ -232,7 +234,7 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
         <header className="topbar">
           <button className="icon-button mobile-menu" type="button" onClick={() => setMobileMenu(true)} aria-label="Open menu"><Menu size={21} /></button>
           <div className="person-switcher">
-            <button className="person-switcher__button" type="button" onClick={() => setPersonMenu((open) => !open)} aria-expanded={personMenu}>
+            <button className="person-switcher__button" type="button" onClick={() => setPersonMenu((open) => !open)} aria-expanded={personMenu} aria-label={`Switch person. Currently viewing ${activePerson?.name ?? "no person"}`}>
               <span className="avatar">{activePerson?.initials ?? "—"}</span>
               <span><small>Viewing</small><strong>{activePerson?.name ?? "No person"}</strong></span>
               <ChevronDown size={16} aria-hidden="true" />
@@ -255,7 +257,7 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
           </div>
           <div className="topbar__right">
             {isDemo ? <span className="demo-pill">Demo workspace</span> : null}
-            <button className="icon-button" type="button" aria-label="Help"><CircleHelp size={20} strokeWidth={1.6} /></button>
+            <button className="icon-button" type="button" onClick={() => setHelpOpen(true)} aria-label="Open help"><CircleHelp size={20} strokeWidth={1.6} /></button>
             <button className="button button--primary topbar__add" type="button" onClick={() => activePerson ? setAddRecordOpen(true) : setAddPersonOpen(true)}><Plus size={18} />{activePerson ? "Add record" : "Add person"}</button>
           </div>
         </header>
@@ -298,6 +300,7 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
 
       <AddPersonModal open={addPersonOpen} onClose={() => setAddPersonOpen(false)} onCreate={createPerson} />
       <AddRecordModal open={addRecordOpen} onClose={() => setAddRecordOpen(false)} onCreate={createRecord} isDemo={isDemo} />
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} onViewSecurity={() => { setHelpOpen(false); navigate("security"); }} />
       <ShareModal record={shareRecord} personId={activePersonId} onClose={() => setShareRecord(null)} isDemo={isDemo} onCreated={() => showToast("A private share link is ready.")} />
       {toast ? <div className="toast" role="status"><Check size={17} />{toast}</div> : null}
     </div>
@@ -311,7 +314,7 @@ function Overview({ person, records, reminders, onViewRecords, onAdd, onShare }:
   return (
     <div className="view overview-view">
       <header className="view-heading view-heading--overview">
-        <div><p className="greeting">Good to see you.</p><h1>{person?.name === "You" ? "Your essentials are in order." : `${person?.name ?? "This person"}’s essentials.`}</h1><p>Find what you need, handle what’s next, and keep the rest quietly protected.</p></div>
+        <div><p className="greeting">Good to see you.</p><h1>{person?.relationship === "Me" || person?.name === "You" ? "Your essentials are in order." : `${person?.name ?? "This person"}’s essentials.`}</h1><p>Find what you need, handle what’s next, and keep the rest quietly protected.</p></div>
         <button className="button button--secondary heading-add" type="button" onClick={onAdd}><Plus size={17} />Add record</button>
       </header>
 
@@ -416,7 +419,7 @@ function WorkspaceLoading() {
 
 function AddPersonModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: (name: string, relationship: string) => Promise<void> }) {
   const [name, setName] = useState("");
-  const [relationship, setRelationship] = useState("Family member");
+  const [relationship, setRelationship] = useState("Me");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -427,13 +430,14 @@ function AddPersonModal({ open, onClose, onCreate }: { open: boolean; onClose: (
     try {
       await onCreate(name.trim(), relationship);
       setName("");
+      setRelationship("Me");
     } catch (caught) {
       setError(apiErrorMessage(caught, "We couldn’t create this private workspace."));
     } finally {
       setBusy(false);
     }
   }
-  return <Modal open={open} onClose={onClose} title="Add a person" description="Each person gets a separate private workspace with its own records and access boundary."><form className="modal-form" onSubmit={submit}><label className="field-label" htmlFor="person-name">Name</label><input id="person-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Person’s name" required /><label className="field-label" htmlFor="relationship">Relationship</label><select id="relationship" value={relationship} onChange={(event) => setRelationship(event.target.value)}><option>Family member</option><option>Partner</option><option>Child</option><option>Parent</option><option>Someone I help</option></select><div className="private-note"><LockKeyhole size={17} /><span>Only you can access this workspace unless you explicitly share a record.</span></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button button--primary" type="submit" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create workspace"}</button></div></form></Modal>;
+  return <Modal open={open} onClose={onClose} title="Add a person" description="Each person gets a separate private workspace with its own records and access boundary."><form className="modal-form" onSubmit={submit}><label className="field-label" htmlFor="person-name">Name</label><input id="person-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={relationship === "Me" ? "Your name" : "Person’s name"} required /><label className="field-label" htmlFor="relationship">Relationship</label><SelectField id="relationship" value={relationship} onChange={(event) => setRelationship(event.target.value)} icon={UserRound}><option value="Me">Me</option><option value="Family member">Family member</option><option value="Partner">Partner</option><option value="Child">Child</option><option value="Parent">Parent</option><option value="Someone I help">Someone I help</option></SelectField><p className="field-hint">{relationship === "Me" ? "Your own private records and documents." : `A private workspace for ${relationship.toLowerCase()}.`}</p><div className="private-note"><LockKeyhole size={17} /><span>Only you can access this workspace unless you explicitly share a record.</span></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button button--primary" type="submit" disabled={busy || !name.trim()}>{busy ? "Creating…" : "Create workspace"}</button></div></form></Modal>;
 }
 
 function AddRecordModal({ open, onClose, onCreate, isDemo }: { open: boolean; onClose: () => void; onCreate: (input: CreateRecordInput, file?: File) => Promise<void>; isDemo: boolean }) {
@@ -467,7 +471,7 @@ function AddRecordModal({ open, onClose, onCreate, isDemo }: { open: boolean; on
       setBusy(false);
     }
   }
-  return <Modal open={open} onClose={onClose} title="Add a record" description="Start with the essentials or attach a source. Extracted details always wait for your review." wide><form className="modal-form" onSubmit={submit}><div className="form-split"><div><label className="field-label" htmlFor="record-title">Record name</label><input id="record-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Vision prescription" required /></div><div><label className="field-label" htmlFor="record-kind">Type</label><select id="record-kind" value={kind} onChange={(event) => setKind(event.target.value as ApiRecordKind)}>{recordKinds.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></div></div><div className="form-split"><div><label className="field-label" htmlFor="record-issuer">Issuer</label><input id="record-issuer" value={issuer} onChange={(event) => setIssuer(event.target.value)} placeholder="Optional" /></div><div><label className="field-label" htmlFor="record-identifier">Document or member number</label><input id="record-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="Concealed after saving" autoComplete="off" /></div></div><div className="form-split"><div><label className="field-label" htmlFor="record-issued">Issued on</label><input id="record-issued" type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} /></div><div><label className="field-label" htmlFor="record-expires">Expires on</label><input id="record-expires" type="date" value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} /></div></div><label className="upload-field" htmlFor="record-file"><UploadCloud size={25} /><strong>{file?.name || "Choose an image or PDF"}</strong><span>{file ? "Ready to upload privately" : "JPEG, PNG, WebP, or PDF · up to 15 MB"}</span><input id="record-file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => { setError(""); setFile(event.target.files?.[0]); }} /></label><div className="extraction-note"><Sparkles size={18} /><div><strong>{isDemo ? "Demo extraction" : "Private extraction"}</strong><span>{isDemo ? "No file leaves this browser in the demo." : "Your source is processed in a protected US region. Sleeve proposes fields for your review."}</span></div></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button button--primary" type="submit" disabled={busy || !title.trim()}>{busy ? "Saving securely…" : file ? "Upload & review" : "Add record"}</button></div></form></Modal>;
+  return <Modal open={open} onClose={onClose} title="Add a record" description="Start with the essentials or attach a source. Extracted details always wait for your review." wide><form className="modal-form" onSubmit={submit}><div className="form-split"><div><label className="field-label" htmlFor="record-title">Record name</label><input id="record-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Vision prescription" required /></div><div><label className="field-label" htmlFor="record-kind">Type</label><SelectField id="record-kind" value={kind} onChange={(event) => setKind(event.target.value as ApiRecordKind)} icon={FileKey}>{recordKinds.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</SelectField></div></div><div className="form-split"><div><label className="field-label" htmlFor="record-issuer">Issuer</label><input id="record-issuer" value={issuer} onChange={(event) => setIssuer(event.target.value)} placeholder="Optional" /></div><div><label className="field-label" htmlFor="record-identifier">Document or member number</label><input id="record-identifier" value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="Concealed after saving" autoComplete="off" /></div></div><div className="form-split"><div><label className="field-label" htmlFor="record-issued">Issued on</label><input id="record-issued" type="date" value={issuedOn} onChange={(event) => setIssuedOn(event.target.value)} /></div><div><label className="field-label" htmlFor="record-expires">Expires on</label><input id="record-expires" type="date" value={expiresOn} onChange={(event) => setExpiresOn(event.target.value)} /></div></div><label className="upload-field" htmlFor="record-file"><UploadCloud size={25} /><strong>{file?.name || "Choose an image or PDF"}</strong><span>{file ? "Ready to upload privately" : "JPEG, PNG, WebP, or PDF · up to 15 MB"}</span><input id="record-file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(event) => { setError(""); setFile(event.target.files?.[0]); }} /></label><div className="extraction-note"><Sparkles size={18} /><div><strong>{isDemo ? "Demo extraction" : "Private extraction"}</strong><span>{isDemo ? "No file leaves this browser in the demo." : "Your source is processed in a protected US region. Sleeve proposes fields for your review."}</span></div></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button><button className="button button--primary" type="submit" disabled={busy || !title.trim()}>{busy ? "Saving securely…" : file ? "Upload & review" : "Add record"}</button></div></form></Modal>;
 }
 
 function ShareModal({ record, personId, onClose, isDemo, onCreated }: { record: SleeveRecord | null; personId: string; onClose: () => void; isDemo: boolean; onCreated: () => void }) {
@@ -505,7 +509,15 @@ function ShareModal({ record, personId, onClose, isDemo, onCreated }: { record: 
     }
   }
   const durationLabel = duration === 15 ? "15 minutes" : duration === 60 ? "1 hour" : duration === 1440 ? "24 hours" : "7 days";
-  return <Modal open={Boolean(record)} onClose={close} title={createdUrl ? "Private link ready" : `Share ${record?.title ?? "record"}`} description={createdUrl ? "Only the selected record is included. You can revoke access at any time." : "Create limited access to this record without opening the rest of the workspace."}>{createdUrl ? <div className="share-created"><div className="share-created__link"><LockKeyhole size={18} /><span>{isDemo ? "Demo link—not connected" : "Private link created"}</span></div><p><Clock3 size={16} />Expires in {durationLabel}</p>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--secondary" type="button" onClick={close}>Done</button><button className="button button--primary" type="button" disabled={isDemo} onClick={copyLink}>Copy private link</button></div></div> : <div className="share-form"><div className="share-scope"><FileText size={20} /><div><strong>{record?.title}</strong><span>Details {includeSource ? "and private source" : "only"}</span></div><span className="status-chip"><Check size={14} />One record</span></div><label className="field-label" htmlFor="share-duration">Link expires after</label><select id="share-duration" value={duration} onChange={(event) => setDuration(Number(event.target.value))}><option value={15}>15 minutes</option><option value={60}>1 hour</option><option value={1440}>24 hours</option><option value={10080}>7 days</option></select><label className="check-row"><input type="checkbox" checked={includeSource} onChange={(event) => setIncludeSource(event.target.checked)} disabled={!record?.hasSource} /><span><strong>Include source image</strong><small>{record?.hasSource ? "Leave off unless the recipient truly needs it." : "This record does not have a source image."}</small></span></label><div className="private-note"><ShieldCheck size={17} /><span>The link is token-scoped, revocable, and expires automatically. It never reveals other records.</span></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={close} disabled={busy}>Cancel</button><button className="button button--primary" type="button" onClick={create} disabled={busy}>{busy ? "Creating…" : "Create private link"}</button></div></div>}</Modal>;
+  return <Modal open={Boolean(record)} onClose={close} title={createdUrl ? "Private link ready" : `Share ${record?.title ?? "record"}`} description={createdUrl ? "Only the selected record is included. You can revoke access at any time." : "Create limited access to this record without opening the rest of the workspace."}>{createdUrl ? <div className="share-created"><div className="share-created__link"><LockKeyhole size={18} /><span>{isDemo ? "Demo link—not connected" : "Private link created"}</span></div><p><Clock3 size={16} />Expires in {durationLabel}</p>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--secondary" type="button" onClick={close}>Done</button><button className="button button--primary" type="button" disabled={isDemo} onClick={copyLink}>Copy private link</button></div></div> : <div className="share-form"><div className="share-scope"><FileText size={20} /><div><strong>{record?.title}</strong><span>Details {includeSource ? "and private source" : "only"}</span></div><span className="status-chip"><Check size={14} />One record</span></div><label className="field-label" htmlFor="share-duration">Link expires after</label><SelectField id="share-duration" value={duration} onChange={(event) => setDuration(Number(event.target.value))} icon={Clock3}><option value={15}>15 minutes</option><option value={60}>1 hour</option><option value={1440}>24 hours</option><option value={10080}>7 days</option></SelectField><label className="check-row"><input type="checkbox" checked={includeSource} onChange={(event) => setIncludeSource(event.target.checked)} disabled={!record?.hasSource} /><span><strong>Include source image</strong><small>{record?.hasSource ? "Leave off unless the recipient truly needs it." : "This record does not have a source image."}</small></span></label><div className="private-note"><ShieldCheck size={17} /><span>The link is token-scoped, revocable, and expires automatically. It never reveals other records.</span></div>{error ? <p className="form-error" role="alert">{error}</p> : null}<div className="modal-actions"><button className="button button--quiet" type="button" onClick={close} disabled={busy}>Cancel</button><button className="button button--primary" type="button" onClick={create} disabled={busy}>{busy ? "Creating…" : "Create private link"}</button></div></div>}</Modal>;
+}
+
+function SelectField({ id, value, onChange, icon: Icon, children }: { id: string; value: string | number; onChange: ChangeEventHandler<HTMLSelectElement>; icon: typeof FileKey; children: ReactNode }) {
+  return <span className="select-field"><Icon className="select-field__context" size={17} strokeWidth={1.7} aria-hidden="true" /><select id={id} value={value} onChange={onChange}>{children}</select><ChevronDown className="select-field__chevron" size={17} strokeWidth={1.7} aria-hidden="true" /></span>;
+}
+
+function HelpModal({ open, onClose, onViewSecurity }: { open: boolean; onClose: () => void; onViewSecurity: () => void }) {
+  return <Modal open={open} onClose={onClose} title="How Sleeve works" description="A quick guide to keeping important information organized and private."><div className="help-content"><div className="help-list"><div className="help-item"><span><UserRound size={18} /></span><div><strong>Start with a person</strong><p>Choose “Me” for your own records, or add someone whose information you manage.</p></div></div><div className="help-item"><span><FileKey size={18} /></span><div><strong>Add the essentials</strong><p>Save key details and attach a private source image or PDF when you have one.</p></div></div><div className="help-item"><span><ShieldCheck size={18} /></span><div><strong>Share only what’s needed</strong><p>Private links include one record, expire after 15 minutes by default, and can be revoked.</p></div></div></div><div className="modal-actions"><button className="button button--quiet" type="button" onClick={onClose}>Close</button><button className="button button--secondary" type="button" onClick={onViewSecurity}><ShieldCheck size={17} />View security</button></div></div></Modal>;
 }
 
 function apiErrorMessage(caught: unknown, fallback: string) {
