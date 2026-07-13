@@ -65,11 +65,21 @@ export interface ExtractedField {
 
 export interface ScanDraft {
   record: ApiRecord | null;
+  personId: string;
   kind: ApiRecordKind;
   fields: ExtractedField[];
   documentType?: string;
   hasSource: boolean;
   failed?: string;
+}
+
+interface PendingScan {
+  id: string;
+  fileName: string;
+  preview: string;
+  stage: string;
+  title: string;
+  draft: ScanDraft | null;
 }
 
 type ToastTone = "success" | "notice";
@@ -92,6 +102,8 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<RecordCategory | "All">("All");
   const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null);
+  const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const personMenuRef = useRef<HTMLDivElement>(null);
   const [records, setRecords] = useState(data.records);
   const [loadingPeople, setLoadingPeople] = useState(!isDemo);
@@ -236,26 +248,54 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
   }
 
   async function scanRecord(input: CreateRecordInput, file: File, onStage: (stage: string) => void): Promise<ScanDraft> {
-    if (!activePersonId) throw new SleeveApiError("Add a person before adding a record.", 400);
+    const personId = activePersonId;
+    if (!personId) throw new SleeveApiError("Add a person before adding a record.", 400);
     if (isDemo) {
-      return { record: null, kind: input.kind, fields: demoExtractionFields(input.kind), documentType: input.kind, hasSource: true };
+      return { record: null, personId, kind: input.kind, fields: demoExtractionFields(input.kind), documentType: input.kind, hasSource: true };
     }
     onStage("Saving the record…");
-    const record = await sleeveApi.createRecord(activePersonId, input);
+    const record = await sleeveApi.createRecord(personId, input);
     let uploadedId = "";
     try {
       onStage("Uploading the source privately…");
-      uploadedId = (await sleeveApi.uploadFile(activePersonId, record.id, file)).id;
+      uploadedId = (await sleeveApi.uploadFile(personId, record.id, file)).id;
     } catch (caught) {
-      return { record, kind: input.kind, fields: [], hasSource: false, failed: apiErrorMessage(caught, "The source could not be uploaded securely.") };
+      return { record, personId, kind: input.kind, fields: [], hasSource: false, failed: apiErrorMessage(caught, "The source could not be uploaded securely.") };
     }
     try {
       onStage("Reading the document…");
-      const extraction = await sleeveApi.extract(activePersonId, record.id, uploadedId);
-      return { record, kind: input.kind, fields: extraction.fields, documentType: extraction.documentType, hasSource: true };
+      const extraction = await sleeveApi.extract(personId, record.id, uploadedId);
+      return { record, personId, kind: input.kind, fields: extraction.fields, documentType: extraction.documentType, hasSource: true };
     } catch {
-      return { record, kind: input.kind, fields: [], hasSource: true, failed: "The source is secure, but extraction isn’t available right now." };
+      return { record, personId, kind: input.kind, fields: [], hasSource: true, failed: "The source is secure, but extraction isn’t available right now." };
     }
+  }
+
+  function startScan(input: CreateRecordInput, file: File) {
+    const preview = file.type.startsWith("image/") && typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : "";
+    const id = `scan-${Date.now()}`;
+    setPendingScan({ id, fileName: file.name, preview, stage: "Saving the record…", title: input.title, draft: null });
+    setAddRecordOpen(false);
+    showToast("Reading your document in the background — keep working.");
+    void scanRecord(input, file, (stage) => setPendingScan((current) => current && current.id === id ? { ...current, stage } : current))
+      .then((draft) => {
+        setPendingScan((current) => current && current.id === id ? { ...current, draft, stage: "" } : current);
+        if (draft.failed) showToast(draft.failed, "notice");
+        else showToast(`${input.title} is ready to review.`);
+      })
+      .catch((caught) => {
+        if (preview) URL.revokeObjectURL?.(preview);
+        setPendingScan((current) => current && current.id === id ? null : current);
+        showToast(apiErrorMessage(caught, "We couldn’t read that document."), "notice");
+      });
+  }
+
+  function clearPendingScan() {
+    setReviewOpen(false);
+    setPendingScan((current) => {
+      if (current?.preview) URL.revokeObjectURL?.(current.preview);
+      return null;
+    });
   }
 
   async function confirmScan(draft: ScanDraft, title: string, fields: ExtractedField[]) {
@@ -271,8 +311,8 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
         hasSource: true,
         fields: fields.length ? fields.map((field) => ({ label: field.label, value: field.value, sensitive: true })) : [{ label: "Details", value: "No details saved yet" }],
       };
-      setRecords((current) => [record, ...current]);
-      setAddRecordOpen(false);
+      if (draft.personId === activePersonId) setRecords((current) => [record, ...current]);
+      clearPendingScan();
       showToast(`${record.title} was added to this demo.`);
       return;
     }
@@ -282,19 +322,21 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
     if (title !== apiRecord.title) update.title = title;
     if (fields.length) update.extraction = { fields, ...(draft.documentType ? { documentType: draft.documentType } : {}) };
     if (Object.keys(update).length) {
-      apiRecord = await sleeveApi.updateRecord(activePersonId, apiRecord.id, update);
+      apiRecord = await sleeveApi.updateRecord(draft.personId, apiRecord.id, update);
     }
-    const record = presentRecord(apiRecord, draft.hasSource);
-    setRecords((current) => [record, ...current]);
-    setAddRecordOpen(false);
-    showToast(`${record.title} was added with the details you approved.`);
+    if (draft.personId === activePersonId) {
+      const record = presentRecord(apiRecord, draft.hasSource);
+      setRecords((current) => [record, ...current]);
+    }
+    clearPendingScan();
+    showToast(`${apiRecord.title} was added with the details you approved.`);
   }
 
   async function discardScan(draft: ScanDraft) {
     if (!isDemo && draft.record) {
-      await sleeveApi.deleteRecord(activePersonId, draft.record.id).catch(() => undefined);
+      await sleeveApi.deleteRecord(draft.personId, draft.record.id).catch(() => undefined);
     }
-    setAddRecordOpen(false);
+    clearPendingScan();
     showToast("Nothing was saved.", "notice");
   }
 
@@ -424,9 +466,33 @@ export function SleeveWorkspace({ data, user, isDemo, onSignOut }: SleeveWorkspa
       </nav>
 
       <AddPersonModal open={addPersonOpen} onClose={() => setAddPersonOpen(false)} onCreate={createPerson} />
-      <AddRecordModal open={addRecordOpen} onClose={() => setAddRecordOpen(false)} onCreate={createRecord} onScan={scanRecord} onScanConfirm={confirmScan} onScanDiscard={discardScan} isDemo={isDemo} />
+      <AddRecordModal open={addRecordOpen} onClose={() => setAddRecordOpen(false)} onCreate={createRecord} onStartScan={startScan} scanPending={Boolean(pendingScan)} isDemo={isDemo} />
+      {pendingScan?.draft ? (
+        <ReviewScanModal
+          key={pendingScan.id}
+          open={reviewOpen}
+          pending={pendingScan}
+          draft={pendingScan.draft}
+          onClose={() => setReviewOpen(false)}
+          onConfirm={confirmScan}
+          onDiscard={discardScan}
+        />
+      ) : null}
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} onViewSecurity={() => { setHelpOpen(false); navigate("security"); }} />
       <ShareModal record={shareRecord} personId={activePersonId} onClose={() => setShareRecord(null)} isDemo={isDemo} onCreated={() => showToast("A private share link is ready.")} />
+      {pendingScan ? (
+        pendingScan.draft ? (
+          <button className="scan-pill scan-pill--ready" type="button" onClick={() => setReviewOpen(true)}>
+            <Sparkles size={17} aria-hidden="true" />
+            <span><strong>{pendingScan.title}</strong><small>{pendingScan.draft.failed ? "Needs a look — open to decide" : "Ready to review"}</small></span>
+          </button>
+        ) : (
+          <div className="scan-pill" role="status">
+            <span className="scan-spinner" aria-hidden="true" />
+            <span><strong>Reading your document…</strong><small>{pendingScan.stage || "Working privately"}</small></span>
+          </div>
+        )
+      ) : null}
       {toast ? (
         <div className={`toast ${toast.tone === "notice" ? "toast--notice" : ""}`} role="status">
           {toast.tone === "notice" ? <Info size={17} /> : <Check size={17} />}
@@ -592,13 +658,12 @@ interface AddRecordModalProps {
   open: boolean;
   onClose: () => void;
   onCreate: (input: CreateRecordInput, file: File | undefined, options: CreateRecordOptions) => Promise<void>;
-  onScan: (input: CreateRecordInput, file: File, onStage: (stage: string) => void) => Promise<ScanDraft>;
-  onScanConfirm: (draft: ScanDraft, title: string, fields: ExtractedField[]) => Promise<void>;
-  onScanDiscard: (draft: ScanDraft) => Promise<void>;
+  onStartScan: (input: CreateRecordInput, file: File) => void;
+  scanPending: boolean;
   isDemo: boolean;
 }
 
-function AddRecordModal({ open, onClose, onCreate, onScan, onScanConfirm, onScanDiscard, isDemo }: AddRecordModalProps) {
+function AddRecordModal({ open, onClose, onCreate, onStartScan, scanPending, isDemo }: AddRecordModalProps) {
   const [mode, setMode] = useState<AddRecordMode>("scan");
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<ApiRecordKind>("passport");
@@ -612,9 +677,6 @@ function AddRecordModal({ open, onClose, onCreate, onScan, onScanConfirm, onScan
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState("");
   const [error, setError] = useState("");
-  const [draft, setDraft] = useState<ScanDraft | null>(null);
-  const [draftTitle, setDraftTitle] = useState("");
-  const [draftFields, setDraftFields] = useState<ExtractedField[]>([]);
 
   const scanning = mode === "scan";
   const kindLabel = kindLabels.get(kind) ?? "Record";
@@ -666,13 +728,10 @@ function AddRecordModal({ open, onClose, onCreate, onScan, onScanConfirm, onScan
   function resetForm() {
     setTitle(""); setIssuer(""); setIdentifier(""); setIssuedOn(""); setExpiresOn("");
     updateFile(undefined); setError("");
-    setDraft(null); setDraftTitle(""); setDraftFields([]);
   }
 
   function handleClose() {
     if (busy) return;
-    if (draft) void onScanDiscard(draft);
-    resetForm();
     onClose();
   }
 
@@ -680,28 +739,24 @@ function AddRecordModal({ open, onClose, onCreate, onScan, onScanConfirm, onScan
     event.preventDefault();
     const effectiveTitle = scanning ? (title.trim() || kindLabel) : title.trim();
     if (!effectiveTitle || (scanning && !file)) return;
+    if (scanning && file) {
+      if (scanPending) return;
+      onStartScan({ kind, title: effectiveTitle }, file);
+      resetForm();
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      if (scanning && file) {
-        const nextDraft = await onScan({
-          kind,
-          title: effectiveTitle,
-        }, file, setStage);
-        setDraft(nextDraft);
-        setDraftTitle(effectiveTitle);
-        setDraftFields(nextDraft.fields);
-      } else {
-        await onCreate({
-          kind,
-          title: effectiveTitle,
-          ...(issuer.trim() ? { issuer: issuer.trim() } : {}),
-          ...(identifier.trim() ? { identifier: identifier.trim() } : {}),
-          ...(issuedOn ? { issuedOn } : {}),
-          ...(expiresOn ? { expiresOn } : {}),
-        }, file, { onStage: setStage });
-        resetForm();
-      }
+      await onCreate({
+        kind,
+        title: effectiveTitle,
+        ...(issuer.trim() ? { issuer: issuer.trim() } : {}),
+        ...(identifier.trim() ? { identifier: identifier.trim() } : {}),
+        ...(issuedOn ? { issuedOn } : {}),
+        ...(expiresOn ? { expiresOn } : {}),
+      }, file, { onStage: setStage });
+      resetForm();
     } catch (caught) {
       setError(apiErrorMessage(caught, "We couldn’t add this record."));
     } finally {
@@ -710,37 +765,7 @@ function AddRecordModal({ open, onClose, onCreate, onScan, onScanConfirm, onScan
     }
   }
 
-  async function saveDraft(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!draft) return;
-    const finalTitle = draftTitle.trim() || kindLabel;
-    const keptFields = draftFields
-      .map((field) => ({ ...field, value: field.value.trim() }))
-      .filter((field) => field.value);
-    setBusy(true);
-    setError("");
-    try {
-      await onScanConfirm(draft, finalTitle, keptFields);
-      resetForm();
-    } catch (caught) {
-      setError(apiErrorMessage(caught, "We couldn’t save this record."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function discardDraft() {
-    if (!draft) return;
-    setBusy(true);
-    try {
-      await onScanDiscard(draft);
-      resetForm();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const canSubmit = scanning ? Boolean(file) : Boolean(title.trim());
+  const canSubmit = scanning ? Boolean(file) && !scanPending : Boolean(title.trim());
   const submitLabel = busy ? (stage || "Saving securely…") : scanning ? "Extract & review" : file ? "Save & upload" : "Save record";
 
   const dropzone = (
@@ -790,86 +815,6 @@ function AddRecordModal({ open, onClose, onCreate, onScan, onScanConfirm, onScan
     </label>
   );
 
-  if (draft) {
-    return (
-      <Modal
-        open={open}
-        onClose={handleClose}
-        title="Review before saving"
-        description="Check what Sleeve read from your document. Edit or remove anything — it isn’t saved until you approve it."
-        wide
-      >
-        <form className="modal-form" onSubmit={saveDraft}>
-          <div className="review-source">
-            {preview ? (
-              // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
-              <img className="review-source__thumb" src={preview} alt="" />
-            ) : (
-              <span className="review-source__thumb review-source__thumb--doc"><FileText size={18} strokeWidth={1.6} aria-hidden="true" /></span>
-            )}
-            <span className="review-source__info">
-              <strong>{file?.name ?? "Source document"}</strong>
-              <span>{draft.failed ? "Uploaded for this record" : `Read as ${documentTypeLabel(draft.documentType ?? draft.kind)}`}</span>
-            </span>
-            <span className="status-chip"><Check size={14} aria-hidden="true" />Private</span>
-          </div>
-
-          {draft.failed ? <p className="form-error" role="alert">{draft.failed}</p> : null}
-
-          <label className="field-label" htmlFor="review-title">Record name</label>
-          <input id="review-title" value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder={kindLabel} disabled={busy} />
-
-          {draftFields.length ? (
-            <>
-              <p className="review-fields-label">Extracted details <span>{draftFields.length} {draftFields.length === 1 ? "field" : "fields"} proposed</span></p>
-              <div className="review-fields">
-                {draftFields.map((field, index) => (
-                  <div className="review-field" key={`${field.label}-${index}`}>
-                    <label htmlFor={`review-field-${index}`}>
-                      {field.label}
-                      {typeof field.confidence === "number" && field.confidence < 0.6 ? <span className="review-flag">Double-check</span> : null}
-                    </label>
-                    <div className="review-field__row">
-                      <input
-                        id={`review-field-${index}`}
-                        value={field.value}
-                        onChange={(event) => setDraftFields((current) => current.map((item, i) => i === index ? { ...item, value: event.target.value } : item))}
-                        autoComplete="off"
-                        disabled={busy}
-                      />
-                      <button
-                        type="button"
-                        className="review-field__remove"
-                        aria-label={`Remove ${field.label}`}
-                        disabled={busy}
-                        onClick={() => setDraftFields((current) => current.filter((_, i) => i !== index))}
-                      >
-                        <X size={15} aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <p className="field-help">
-              {draft.failed
-                ? `You can keep the record${draft.hasSource ? " and its private source" : ""} and add details later, or discard it.`
-                : "Sleeve couldn’t propose fields from this image. You can save the record with its source and add details later."}
-            </p>
-          )}
-
-          <div className="private-note"><LockKeyhole size={17} aria-hidden="true" /><span>Nothing is added until you save. Saved values stay concealed until you reveal them.</span></div>
-          {error ? <p className="form-error" role="alert">{error}</p> : null}
-          <div className="modal-actions">
-            <button className="button button--quiet" type="button" onClick={discardDraft} disabled={busy}>Discard</button>
-            <button className="button button--primary" type="submit" disabled={busy}>{busy ? "Saving…" : draft.failed && !draftFields.length ? "Keep record" : "Save record"}</button>
-          </div>
-        </form>
-      </Modal>
-    );
-  }
-
   return (
     <Modal open={open} onClose={handleClose} title="Add a record" description="Scan a source document, or enter the details yourself. Nothing is shared until you choose to." wide>
       <form className="modal-form" onSubmit={submit}>
@@ -914,10 +859,11 @@ function AddRecordModal({ open, onClose, onCreate, onScan, onScanConfirm, onScan
             <div className="extraction-note">
               <Sparkles size={18} aria-hidden="true" />
               <div>
-                <strong>{isDemo ? "Demo extraction" : "Private extraction"}</strong>
-                <span>{isDemo ? "No file leaves this browser in the demo." : "Your source is processed in a protected US region. Sleeve proposes fields, and nothing is saved without your review."}</span>
+                <strong>{isDemo ? "Demo extraction" : "Reads in the background"}</strong>
+                <span>{isDemo ? "No file leaves this browser in the demo." : "Your source is processed in a protected US region while you keep working. Nothing is saved without your review."}</span>
               </div>
             </div>
+            {scanPending ? <p className="field-help" role="status">A document is already being read. When it finishes you can review it, then scan another.</p> : null}
           </>
         ) : (
           <>
@@ -963,6 +909,127 @@ function AddRecordModal({ open, onClose, onCreate, onScan, onScanConfirm, onScan
         <div className="modal-actions">
           <button className="button button--quiet" type="button" onClick={onClose} disabled={busy}>Cancel</button>
           <button className="button button--primary" type="submit" disabled={busy || !canSubmit} aria-live="polite">{submitLabel}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+interface ReviewScanModalProps {
+  open: boolean;
+  pending: PendingScan;
+  draft: ScanDraft;
+  onClose: () => void;
+  onConfirm: (draft: ScanDraft, title: string, fields: ExtractedField[]) => Promise<void>;
+  onDiscard: (draft: ScanDraft) => Promise<void>;
+}
+
+function ReviewScanModal({ open, pending, draft, onClose, onConfirm, onDiscard }: ReviewScanModalProps) {
+  const [title, setTitle] = useState(pending.title);
+  const [fields, setFields] = useState<ExtractedField[]>(draft.fields);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const kindLabel = kindLabels.get(draft.kind) ?? "Record";
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const finalTitle = title.trim() || kindLabel;
+    const keptFields = fields
+      .map((field) => ({ ...field, value: field.value.trim() }))
+      .filter((field) => field.value);
+    setBusy(true);
+    setError("");
+    try {
+      await onConfirm(draft, finalTitle, keptFields);
+    } catch (caught) {
+      setError(apiErrorMessage(caught, "We couldn’t save this record."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discard() {
+    setBusy(true);
+    try {
+      await onDiscard(draft);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => { if (!busy) onClose(); }}
+      title="Review before saving"
+      description="Check what Sleeve read from your document. Close this to decide later — nothing is saved until you approve it."
+      wide
+    >
+      <form className="modal-form" onSubmit={save}>
+        <div className="review-source">
+          {pending.preview ? (
+            // eslint-disable-next-line @next/next/no-img-element -- local object URL preview
+            <img className="review-source__thumb" src={pending.preview} alt="" />
+          ) : (
+            <span className="review-source__thumb review-source__thumb--doc"><FileText size={18} strokeWidth={1.6} aria-hidden="true" /></span>
+          )}
+          <span className="review-source__info">
+            <strong>{pending.fileName}</strong>
+            <span>{draft.failed ? "Uploaded for this record" : `Read as ${documentTypeLabel(draft.documentType ?? draft.kind)}`}</span>
+          </span>
+          <span className="status-chip"><Check size={14} aria-hidden="true" />Private</span>
+        </div>
+
+        {draft.failed ? <p className="form-error" role="alert">{draft.failed}</p> : null}
+
+        <label className="field-label" htmlFor="review-title">Record name</label>
+        <input id="review-title" value={title} onChange={(event) => setTitle(event.target.value)} placeholder={kindLabel} disabled={busy} />
+
+        {fields.length ? (
+          <>
+            <p className="review-fields-label">Extracted details <span>{fields.length} {fields.length === 1 ? "field" : "fields"} proposed</span></p>
+            <div className="review-fields">
+              {fields.map((field, index) => (
+                <div className="review-field" key={`${field.label}-${index}`}>
+                  <label htmlFor={`review-field-${index}`}>
+                    {field.label}
+                    {typeof field.confidence === "number" && field.confidence < 0.6 ? <span className="review-flag">Double-check</span> : null}
+                  </label>
+                  <div className="review-field__row">
+                    <input
+                      id={`review-field-${index}`}
+                      value={field.value}
+                      onChange={(event) => setFields((current) => current.map((item, i) => i === index ? { ...item, value: event.target.value } : item))}
+                      autoComplete="off"
+                      disabled={busy}
+                    />
+                    <button
+                      type="button"
+                      className="review-field__remove"
+                      aria-label={`Remove ${field.label}`}
+                      disabled={busy}
+                      onClick={() => setFields((current) => current.filter((_, i) => i !== index))}
+                    >
+                      <X size={15} aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="field-help">
+            {draft.failed
+              ? `You can keep the record${draft.hasSource ? " and its private source" : ""} and add details later, or discard it.`
+              : "Sleeve couldn’t propose fields from this image. You can save the record with its source and add details later."}
+          </p>
+        )}
+
+        <div className="private-note"><LockKeyhole size={17} aria-hidden="true" /><span>Nothing is added until you save. Saved values stay concealed until you reveal them.</span></div>
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        <div className="modal-actions">
+          <button className="button button--quiet" type="button" onClick={discard} disabled={busy}>Discard</button>
+          <button className="button button--primary" type="submit" disabled={busy}>{busy ? "Saving…" : draft.failed && !fields.length ? "Keep record" : "Save record"}</button>
         </div>
       </form>
     </Modal>

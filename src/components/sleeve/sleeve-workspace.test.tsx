@@ -56,9 +56,12 @@ describe("workspace controls", () => {
     fireEvent.change(fileInput, { target: { files: [new File(["x"], "card.png", { type: "image/png" })] } });
     fireEvent.click(screen.getByRole("button", { name: "Extract & review" }));
 
+    const pill = await screen.findByRole("button", { name: /Ready to review/ });
+    expect(screen.queryByText("Passport was added to this demo.")).not.toBeInTheDocument();
+    fireEvent.click(pill);
+
     await screen.findByRole("heading", { name: "Review before saving" });
     expect(screen.getByDisplayValue("DEMO000000")).toBeInTheDocument();
-    expect(screen.queryByText("Passport was added to this demo.")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove Place of issue" }));
     fireEvent.click(screen.getByRole("button", { name: "Save record" }));

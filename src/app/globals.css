@@ -411,6 +411,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--moss); outl
 .help-item > span { width: 34px; height: 34px; flex: 0 0 auto; border-radius: 10px; display: grid; place-items: center; color: var(--moss-dark); background: var(--moss-pale); }
 .help-item strong { font-size: 13px; font-weight: 570; }
 .help-item p { max-width: 42ch; margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.scan-pill { position: fixed; z-index: var(--z-toast); left: calc(var(--rail-width) + 24px); bottom: 24px; min-height: 54px; max-width: min(340px, calc(100vw - 48px)); padding: 8px 16px 8px 13px; border: 1px solid var(--line); border-radius: 15px; display: flex; align-items: center; gap: 11px; background: white; box-shadow: 0 8px 24px oklch(.16 .014 150 / .1); text-align: left; animation: toast-in 200ms var(--ease-out); }
+.scan-pill > span:last-child { min-width: 0; display: flex; flex-direction: column; }
+.scan-pill strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 560; }
+.scan-pill small { margin-top: 1px; color: var(--muted); font-size: 10px; }
+.scan-pill--ready { border-color: oklch(.78 .07 150); cursor: pointer; }
+.scan-pill--ready:hover { background: var(--moss-pale); }
+.scan-pill--ready > svg { flex: 0 0 auto; color: var(--moss); }
+.scan-pill--ready small { color: var(--moss-dark); font-weight: 530; }
+.scan-spinner { width: 17px; height: 17px; flex: 0 0 auto; border: 2px solid var(--line); border-top-color: var(--moss); border-radius: 50%; animation: scan-spin 800ms linear infinite; }
+@keyframes scan-spin { to { transform: rotate(360deg); } }
 .toast { position: fixed; z-index: var(--z-toast); right: 24px; bottom: 24px; min-height: 48px; max-width: calc(100vw - 48px); padding: 10px 15px; border-radius: 13px; display: flex; align-items: center; gap: 9px; color: white; background: var(--ink); box-shadow: 0 12px 34px oklch(.16 .014 150 / .24); font-size: 12px; animation: toast-in 200ms var(--ease-out); }
 .toast svg { flex: 0 0 auto; color: oklch(.73 .13 150); }
 .toast--notice svg { color: oklch(.78 .13 42); }
@@ -484,6 +494,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--moss); outl
   .bottom-nav button.is-active::before { content: ""; position: absolute; top: 2px; width: 16px; height: 2px; border-radius: 2px; background: var(--moss); }
   .bottom-nav button.is-active svg { color: var(--moss); }
   .toast { right: 12px; bottom: 80px; }
+  .scan-pill { left: 12px; right: auto; bottom: 80px; max-width: min(300px, calc(100vw - 24px)); }
 }
 
 @media (max-width: 520px) {
