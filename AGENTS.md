@@ -36,9 +36,12 @@
 - `sleeve-glm-ocr-v2` passed live L4 inference against a fully synthetic passport image; keep production `MODAL_EXTRACT_URL` pinned to its `us-west` endpoint.
 - Vercel `MODAL_SHARED_SECRET` must equal `EXTRACTION_BEARER_TOKEN` in the Modal secret `sleeve-extraction-auth`; the v1→v2 migration left them out of sync (Modal returned 401, surfaced in the app as "extraction isn’t available right now"). Rotated both to a fresh token on 2026-07-11. Rotation order: update the Modal secret, redeploy the Modal app, update the Vercel production env, then redeploy Vercel.
 
+- GLM-OCR latency on the L4 scales with input resolution: a 12 MP phone photo ran past Modal's 150 s sync HTTP window and the 180 s function timeout, while the same document at 1280 px extracts correctly in ~60-70 s. The Modal service caps inference images at `MAX_INFERENCE_EDGE = 1280`, and the app's extraction fetch timeout is 150 s (route `maxDuration` 180).
+
 ## Execute: Dead-ends tried
 
 - `uvx modal deploy` from `modal/` lacks local FastAPI imports; use `uv run modal deploy -m sleeve_extractor.service` inside the locked project environment.
+- `vercel env add NAME production < file` silently stores an EMPTY value in agent shells (CLI 54 detects non-interactive and skips stdin) — this is how the Modal secret broke. Use `--value "$TOK"`, avoid `--sensitive` (sensitive values cannot be pulled back for verification), and verify with `vercel env pull` + compare before redeploying.
 - Modal image build with `transformers==5.13.0` and `safetensors==0.7.0` is unsatisfiable; Transformers 5.13 requires `safetensors>=0.8.0`.
 - GLM-OCR's Transformers processor imports image/video utilities from Torchvision; pair `torch==2.9.1` with `torchvision==0.24.1`.
 - Treat the cached Modal model as usable only when `/models/glm-ocr/.ready` exists; a processor config can survive an interrupted first download without any model weights.
