@@ -34,9 +34,9 @@ export async function extractDocument(downloadUrl: string, contentType: string, 
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
     body: JSON.stringify({ document_type: documentType, mime_type: contentType, image_base64: bytes.toString("base64") }),
-    cache: "no-store", signal: AbortSignal.timeout(55_000),
+    cache: "no-store", signal: AbortSignal.timeout(150_000),
   });
-  if (!response.ok) throw new Error("Extraction failed");
+  if (!response.ok) throw new Error(`Extraction failed (upstream status ${response.status})`);
   const parsed = modalResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new Error("Extraction returned invalid data");
   return { status: "review_required", documentType: parsed.data.document_type, fields: flattenFields(parsed.data.fields).slice(0, 100) };

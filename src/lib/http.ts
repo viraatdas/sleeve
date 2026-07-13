@@ -46,6 +46,8 @@ export async function handleApi(
     if (error instanceof ValidationError) return json({ error: "Invalid request" }, 400);
     if (error instanceof Error && error.message === "PERSON_NOT_EMPTY") return json({ error: "Remove this person's records first" }, 409);
     if (error instanceof Error && error.message === "RECORD_HAS_FILES") return json({ error: "Remove this record's files first" }, 409);
+    // Log only the error name/message — never request payloads or document data.
+    console.error("api_unhandled_error", error instanceof Error ? `${error.name}: ${error.message}` : typeof error);
     return json({ error: "Unable to complete the request" }, 500);
   }
 }

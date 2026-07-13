@@ -22,6 +22,7 @@ MODEL_DIR = "/models/glm-ocr"
 MODEL_READY_MARKER = "/models/glm-ocr/.ready"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 25_000_000
+MAX_INFERENCE_EDGE = 1_280
 MAX_NEW_TOKENS = 1_500
 
 model_volume = modal.Volume.from_name("sleeve-glm-ocr-models", create_if_missing=True)
@@ -69,7 +70,14 @@ def _decode_image(request: ExtractionRequest):
     if image.format != expected_format:
         image.close()
         raise ValueError("image content does not match its MIME type")
-    return image.convert("RGB")
+    rgb = image.convert("RGB")
+    # Phone photos arrive at 12+ megapixels; unbounded resolution multiplies
+    # vision tokens and pushes inference past the synchronous HTTP window.
+    if max(rgb.size) > MAX_INFERENCE_EDGE:
+        rgb.thumbnail((MAX_INFERENCE_EDGE, MAX_INFERENCE_EDGE), Image.LANCZOS)
+    # Dimensions only — never log document contents.
+    print(f"inference_image_px={rgb.size[0]}x{rgb.size[1]}")
+    return rgb
 
 
 def _prompt_for(request: ExtractionRequest) -> str:
